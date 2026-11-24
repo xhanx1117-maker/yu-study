@@ -7,11 +7,11 @@ export async function detect(pdf,count){
  const markers=[],texts=[],columns=[],passages=[];let last=0;
  for(let page=1;page<=pdf.numPages;page++){const p=await pdf.getPage(page),v=p.getViewport({scale:1}),tc=await p.getTextContent();const lines=[];
  for(const item of tc.items){if(!item.str?.trim())continue;const [x,y]=v.convertToViewportPoint(item.transform[4],item.transform[5]+item.height*.85);lines.push({x:x/v.width,y:y/v.height,str:item.str})}
- const match=t=>/^\s*(?:��\s*��?\s*(\d{1,3})(?:[.)]|\s|$)|(\d{1,3})[.)](?:\s|$|(?=[��-�R])))/.exec(t);
+ const match=t=>/^\s*(?:문\s*제?\s*(\d{1,3})(?:[.)]|\s|$)|(\d{1,3})[.)](?:\s|$|(?=[가-힣])))/.exec(t);
  const candidates=lines.filter(a=>match(a.str)&&a.y>.025&&a.y<.97);
  const two=candidates.some(a=>a.x>.45&&a.x<.61)&&candidates.some(a=>a.x<.15);columns[page]=two?2:1;
  function col(x){return two&&x>=.48?1:0}
- for(const a of lines){const shared=a.str.match(/[\[(��]\s*(\d+)\s*[~����?-]\s*(\d+)\s*[\])��]/);if(shared)passages.push({page,col:col(a.x),top:Math.max(0,a.y-.004),from:+shared[1],to:+shared[2]})}
+ for(const a of lines){const shared=a.str.match(/[\[(【]\s*(\d+)\s*[~～∼–-]\s*(\d+)\s*[\])】]/);if(shared)passages.push({page,col:col(a.x),top:Math.max(0,a.y-.004),from:+shared[1],to:+shared[2]})}
  for(const a of candidates.sort((a,b)=>col(a.x)-col(b.x)||a.y-b.y)){const m=match(a.str),n=+(m[1]||m[2]);if(n<=last||n>count||(!m[1]&&a.x-(col(a.x)*.5)>.16))continue;markers.push({n,page,col:col(a.x),top:Math.max(0,a.y-.004)});last=n}
  texts[page]=lines;p.cleanup()}
  const out={};for(const [i,m] of markers.entries()){const next=markers[i+1],regions=[];const end=next?.page||m.page;
