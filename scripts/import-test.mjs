@@ -53,7 +53,8 @@ try{
   const page=await context.newPage();
   page.setDefaultTimeout(20000);
   const errors=[],external=[];
-  page.on('pageerror',error=>errors.push(error.message));
+  page.on('pageerror',error=>{errors.push(error.message);console.error(error.message)});
+  page.on('console',message=>{if(['error','warning'].includes(message.type()))console.log(message.type()+': '+message.text())});
   page.on('request',request=>{
     if(!/^https?:/.test(request.url()))return;
     const requestedOrigin=new URL(request.url()).origin;
@@ -194,8 +195,10 @@ try{
   assert.equal(imported.hash,expectedHash);
   assert.equal(imported.filename,'2026 영어.pdf');
   await page.locator('[data-doc="'+imported.id+'"]').click();
-  await page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>0);
-  await page.waitForFunction(()=>document.querySelector('#reginfo')?.textContent.includes('영역 1개'));
+  try{
+    await page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>0);
+    await page.waitForFunction(()=>document.querySelector('#reginfo')?.textContent.includes('영역 1개'));
+  }catch(error){console.error(await page.locator('body').innerText());throw error}
   console.log(engine+': PDF rendered after reload');
 
   await page.getByRole('button',{name:'설정',exact:true}).click();
