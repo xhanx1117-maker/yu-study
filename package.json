@@ -2,7 +2,7 @@
   "name": "yu-study",
   "private": true,
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "scripts": {
     "build": "vite build",
     "test": "node --test tests/*.mjs",
@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "pdfjs-dist": "5.6.205",
-    "jszip": "3.10.1", "pdf-lib": "1.17.1"
+    "jszip": "3.10.1",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
-    "vite": "7.2.2", "playwright": "1.56.1"
+    "vite": "7.2.2",
+    "playwright": "1.56.1"
   }
 }
