@@ -2,7 +2,7 @@ import http from 'node:http';import fs from 'node:fs';import path from 'node:pat
 import {createRequire} from 'node:module';const require=createRequire(import.meta.url);const {chromium,webkit}=require('playwright'),{PDFDocument,StandardFonts}=require('pdf-lib');
 const root=path.resolve('dist');
 let upgrade=false;
-const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://localhost');if(!u.pathname.startsWith('/yu-study/')){res.writeHead(404).end();return}const f=path.resolve(root,u.pathname.slice(10)||'index.html');if(!f.startsWith(root+path.sep)||!fs.existsSync(f)){res.writeHead(404).end();return}res.setHeader('Content-Type',({'.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.html':'text/html','.wasm':'application/wasm','.webmanifest':'application/manifest+json'})[path.extname(f)]||'application/octet-stream');if(upgrade&&path.basename(f)==='sw.js'){res.end(fs.readFileSync(f,'utf8') .replace('yu-study-shell-','yu-study-shell-upgrade-'));return}fs.createReadStream(f).pipe(res)});
+const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://localhost');if(u.pathname==='/observe-update.html'){res.writeHead(200,{'Content-Type':'text/html'}).end('<!doctype html><title>Update observer</title>');return}if(!u.pathname.startsWith('/yu-study/')){res.writeHead(404).end();return}const f=path.resolve(root,u.pathname.slice(10)||'index.html');if(!f.startsWith(root+path.sep)||!fs.existsSync(f)){res.writeHead(404).end();return}res.setHeader('Content-Type',({'.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.html':'text/html','.wasm':'application/wasm','.webmanifest':'application/manifest+json'})[path.extname(f)]||'application/octet-stream');if(upgrade&&path.basename(f)==='sw.js'){res.end(fs.readFileSync(f,'utf8') .replace('yu-study-shell-','yu-study-shell-upgrade-'));return}fs.createReadStream(f).pipe(res)});
 (async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;const deadline=setTimeout(()=>{console.error('Browser regression exceeded 120 seconds.');process.exit(1)},120000);deadline.unref();try{
 const engine=process.env.YU_TEST_ENGINE==='webkit'?webkit:chromium;
 // A temporary persistent profile supports WebKit IndexedDB Blob/File storage.
@@ -16,17 +16,28 @@ const printed=p.waitForEvent('download');await p.locator('#pdfsave').click();con
 await p.getByRole('button',{name:'설정',exact:true}).click();const dl=p.waitForEvent('download');await p.locator('#backup').click();const zip=await (await dl).path();await p.waitForFunction(()=>document.querySelector('#notice')?.textContent.includes('백업 ZIP'));
 const fc=p.waitForEvent('filechooser');await p.locator('#restore').click();p.once('dialog',d=>d.accept());await (await fc).setFiles({name:'sample.zip',mimeType:'application/zip',buffer:fs.readFileSync(zip)});await p.waitForFunction(()=>document.querySelector('#notice')?.textContent.includes('복원했습니다'));
 await p.evaluate(()=>navigator.serviceWorker.ready);await p.waitForFunction(()=>!!navigator.serviceWorker.controller);upgrade=true;
-await p.evaluate(async()=>{const reg=await navigator.serviceWorker.ready;await reg.update();const worker=reg.installing;if(worker&&worker.state!=='installed')await new Promise((resolve,reject)=>worker.addEventListener('statechange',()=>{if(worker.state==='installed')resolve();if(worker.state==='redundant')reject(Error('Update installation failed'))}));});
-const address=p.url();await p.goto('about:blank');await p.goto(address);
-await p.waitForFunction(async()=>(await caches.keys()).some(k=>k.startsWith('yu-study-shell-upgrade-'))&&!(await caches.keys()).some(k=>/^yu-study-shell-[a-f0-9]/.test(k)));
-// Cache cleanup precedes clients.claim(); wait for the new worker to control the page.
-await p.waitForFunction(()=>navigator.serviceWorker.controller?.state==='activated');
+await p.evaluate(async()=>{const reg=await navigator.serviceWorker.ready;await reg.update()});
+await p.waitForFunction(async()=>(await navigator.serviceWorker.getRegistration())?.waiting?.state==='installed');
+const address=p.url(),reopened=await context.newPage();reopened.setDefaultTimeout(20000);
+reopened.on('pageerror',e=>pageErrors.push(e.message));
+// Close the last controlled client exactly as an installed app closes. An outside-scope
+// page can watch activation without racing to acquire the old worker on navigation.
+await reopened.goto(new URL('/observe-update.html',address).href);
+await p.close();
+await reopened.waitForFunction(async url=>{
+  const reg=await navigator.serviceWorker.getRegistration(url),names=await caches.keys();
+  return reg?.active?.state==='activated'&&!reg.waiting&&!reg.installing&&
+    names.some(k=>k.startsWith('yu-study-shell-upgrade-'))&&!names.some(k=>/^yu-study-shell-[a-f0-9]/.test(k));
+},address);
+const resumed=await reopened.goto(address);
+assert.equal(resumed.fromServiceWorker(),true);
+await reopened.waitForFunction(()=>navigator.serviceWorker.controller?.state==='activated');
 // WebKit's offline emulation rejects even literal service-worker responses
 // (microsoft/playwright#42775). Stop the origin for both engines instead;
 // Chromium also exercises the browser's offline flag.
 const closed=new Promise(resolve=>server.close(resolve));server.closeAllConnections();await closed;
 await assert.rejects(fetch(address));
 if(engine===chromium)await context.setOffline(true);
-const offlineResponse=await p.reload();assert.equal(offlineResponse.fromServiceWorker(),true);
-await p.getByRole('heading',{name:'학습 서재'}).waitFor();await p.getByRole('button',{name:'오답노트',exact:true}).click();await p.locator('[data-detail]').first().click();await p.locator('.crops canvas').waitFor();assert.deepEqual(pageErrors,[]);console.log('PASS: import, auto crop, session, notebook rendering, A4 PDF file, full backup and restore, app update, origin stopped, service-worker reload and PDF rendering.');
+const offlineResponse=await reopened.reload();assert.equal(offlineResponse.fromServiceWorker(),true);
+await reopened.getByRole('heading',{name:'학습 서재'}).waitFor();await reopened.getByRole('button',{name:'오답노트',exact:true}).click();await reopened.locator('[data-detail]').first().click();await reopened.locator('.crops canvas').waitFor();assert.deepEqual(pageErrors,[]);console.log('PASS: import, auto crop, session, notebook rendering, A4 PDF file, full backup and restore, app update, origin stopped, service-worker reload and PDF rendering.');
 }finally{await browser?.close();if(server.listening)server.close();clearTimeout(deadline)}})().catch(e=>{console.error(e);process.exitCode=1});
