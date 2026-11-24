@@ -1,6 +1,4 @@
-import http from 'node:http';
-import fs from 'node:fs';
-import path from 'node:path';
+import {testServer} from './test-server.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
@@ -9,22 +7,7 @@ import {initial} from '../src/model.js';
 const require=createRequire(import.meta.url);
 const {chromium,webkit}=require('playwright');
 const {PDFDocument,StandardFonts}=require('pdf-lib');
-const root=path.resolve('dist');
-const mime={'.html':'text/html','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.wasm':'application/wasm'};
-const server=http.createServer((req,res)=>{
-  const pathname=new URL(req.url,'http://localhost').pathname;
-  if(pathname==='/seed.html'){
-    res.setHeader('Content-Type','text/html');
-    res.end('<!doctype html><title>Isolated storage test</title>');
-    return;
-  }
-  if(!pathname.startsWith('/yu-study/')){res.writeHead(404).end();return}
-  const relative=decodeURIComponent(pathname.slice('/yu-study/'.length))||'index.html';
-  const file=path.resolve(root,relative);
-  if(!file.startsWith(root+path.sep)||!fs.existsSync(file)){res.writeHead(404).end();return}
-  res.setHeader('Content-Type',mime[path.extname(file)]||'application/octet-stream');
-  fs.createReadStream(file).pipe(res);
-});
+const server=testServer();
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engine=process.env.YU_TEST_ENGINE||'chromium';
@@ -212,8 +195,8 @@ try{
   console.log(engine+': original File PDF and legacy question-only coordinates preserved after automatic scan');
 
   await page.getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByText('기기 저장 · v0.3.0').waitFor();
-  assert.equal(await page.getByText('기기 저장 · v0.3.0').count(),1);
+  await page.getByText('기기 저장 · v0.3.1').waitFor();
+  assert.equal(await page.getByText('기기 저장 · v0.3.1').count(),1);
   assert.equal(await page.getByRole('button',{name:/Dropbox/}).count(),0);
   const choosing=page.waitForEvent('filechooser');
   await page.locator('#seed').click();

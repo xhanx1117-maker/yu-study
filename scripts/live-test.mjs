@@ -54,6 +54,20 @@ try{
   await page.getByRole('heading',{name:'학습 서재'}).waitFor();
   await page.getByRole('button',{name:'오답노트',exact:true}).click();
   await page.locator('[data-subject="영어"]').click();
+  await page.locator('#filters > summary').click();
+  const search=page.locator('#f-search');await search.focus();
+  const ime=await context.newCDPSession(page);
+  await search.evaluate(el=>{window.releaseInput=el});
+  await ime.send('Input.imeSetComposition',{text:'ㄱ',selectionStart:1,selectionEnd:1});
+  await page.waitForTimeout(350);
+  assert.ok(await search.evaluate(el=>el===window.releaseInput&&el===document.activeElement));
+  assert.equal(await page.locator('[data-q]').count(),1);
+  await ime.send('Input.imeSetComposition',{text:'구름',selectionStart:2,selectionEnd:2});
+  await ime.send('Input.insertText',{text:'구름'});
+  await page.waitForFunction(()=>!document.querySelector('[data-q]'));
+  await search.fill('검증');await page.locator('[data-q]').waitFor();
+  assert.ok(await search.evaluate(el=>el===window.releaseInput&&el===document.activeElement));
+  await ime.detach();
   await page.locator('[data-detail]').first().click();
   await page.locator('.crops canvas').waitFor();
   await page.locator('dialog form button').click();
@@ -61,7 +75,7 @@ try{
   await page.locator('#proof-canvas canvas').waitFor();
   assert.equal(await page.locator('[data-q]').count(),1);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({version,url,status:response.status(),registration,manifest,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline workbook preview']}));
+  console.log(JSON.stringify({version,url,status:response.status(),registration,manifest,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline native Korean composition and committed search','offline workbook preview']}));
 }finally{
   await browser?.close();
   clearTimeout(deadline);

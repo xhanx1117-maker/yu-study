@@ -1,10 +1,18 @@
 import {subjects, themes} from './model.js';
 
+import {searchKey} from './search.js';
+
 export const statuses = ['미복습', '복습 필요', '부분 이해', '숙지 완료'];
 export const orders = {recent:'최근 오답순', year:'연도순', theme:'테마 번호순', repeated:'오답 횟수순'};
 export const emptyFilters = () => ({subject:'', year:'', exam:'', book:'', part:'', chapter:'', themeIds:[], kind:'', status:'', search:'', sort:'recent'});
 
-export function notebookIndex(archive) {
+function rowText({question,doc,linked}) {
+  const detected = doc.detected?.[question.number]?.text;
+  return searchKey([question.text, detected === question.text ? '' : detected, doc.title, question.memo,
+    ...linked.map(t=>t.title)].filter(Boolean).join(' '));
+}
+
+export function notebookIndex(archive, {searchable=false}={}) {
   const docs = new Map(archive.documents.map(doc => [doc.id, doc]));
   const catalog = themes({schemaVersion:1, books:archive.books}).filter(t => t.enabled);
   const themeMap = new Map(catalog.map(theme => [theme.id, theme]));
@@ -20,7 +28,9 @@ export function notebookIndex(archive) {
     const linked = [...new Set([question.theme, ...question.secondary])].map(id => themeMap.get(id))
       .filter(t => t && t.subject === doc.subject);
     const latest = events.reduce((date, event) => (event.date || '') > date ? event.date : date, '');
-    rows.push({id:question.id, question, doc, events, latest, count:events.length, linked});
+    const row = {id:question.id, question, doc, events, latest, count:events.length, linked};
+    if (searchable) row.searchText = rowText(row);
+    rows.push(row);
   }
   return {rows, docs, catalog, themeMap, byId:new Map(rows.map(row => [row.id,row]))};
 }
@@ -38,8 +48,8 @@ export function sortRows(rows, order) {
     a.question.number-b.question.number || a.id.localeCompare(b.id));
 }
 
-export function filterRows(rows, f) {
-  const search = f.search.trim().normalize('NFC').toLocaleLowerCase('ko'), ids = new Set(f.themeIds);
+export function filterCandidates(rows, f) {
+  const ids = new Set(f.themeIds);
   return sortRows(rows.filter(({question:q, doc, count, linked}) => {
     if ((f.subject && f.subject!==doc.subject) || (f.year && f.year!==String(doc.year??'')) || (f.exam && f.exam!==doc.exam)) return false;
     if (f.status && f.status!==q.status) return false;
@@ -48,9 +58,17 @@ export function filterRows(rows, f) {
       if (!linked.some(t => (!f.book || t.book===f.book) && (!f.part || t.partId===f.part) &&
           (!f.chapter || t.chapterId===f.chapter) && (!ids.size || ids.has(t.id)))) return false;
     }
-    return !search || [q.text, doc.detected?.[q.number]?.text, doc.title, q.memo, ...linked.map(t=>t.title)]
-      .filter(Boolean).join(' ').normalize('NFC').toLocaleLowerCase('ko').includes(search);
+    return true;
   }), f.sort);
+}
+
+export function searchRows(candidates, draft) {
+  const needle = searchKey(draft).trim();
+  return needle ? candidates.filter(row => (row.searchText ?? rowText(row)).includes(needle)) : candidates;
+}
+
+export function filterRows(rows, filters) {
+  return searchRows(filterCandidates(rows, filters), filters.search);
 }
 
 export function totals(rows) {

@@ -77,7 +77,8 @@ try{
   await tab('행정법');await summary('#group-panel');await page.locator('#group-type').selectOption('theme');
   assert.match(await page.locator('[data-group="case"]').textContent(),/고유 8문항 · 누적 9회/);await page.locator('[data-group="case"]').click();
   await hasCount(8);await summary('#filters');await page.locator('#f-year').selectOption('2025');await hasCount(7);
-  await page.locator('#f-search').fill('연습 A');await page.waitForTimeout(220);
+  await page.locator('#f-search').fill('연습 A 1');await hasCount(1);
+  await page.locator('#f-search').fill('연습 A');await hasCount(7);
   await page.locator('#f-sort').selectOption('year');
   await detail('law#1');await page.locator('.crops canvas').waitFor();await close();
 
