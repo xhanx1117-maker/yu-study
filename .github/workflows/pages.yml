@@ -19,6 +19,8 @@ jobs:
       - run: npm install --ignore-scripts
       - run: npm test
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/browser-test.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

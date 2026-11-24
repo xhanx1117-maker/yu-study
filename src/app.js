@@ -2,6 +2,7 @@ import {initial,subjects,stats,themes,infer,classify} from './model.js';
 import {get,state,change,hash} from './db.js';
 import {$,esc,options,action,on,pick,notice,guard,modal} from './ui.js';
 import {download,backup,restore} from './backup.js';
+import {notebookPdf} from './export.js';
 import {reader} from './reader.js';
 import {openPdf,paint} from './pdf.js';
 const menus=['홈','자료실','오답노트','취약 영역','설정'],app=$('#app');
@@ -45,7 +46,16 @@ async function notebook(s,qs,count,turn){const ts=allThemes(s),list=qs.filter(q=
  on('filter',e=>{filter=e.target.value;return show()},'change');on('theme',e=>{theme=e.target.value;return show()},'change');
  const rendering=new WeakMap();async function render(el){if(rendering.has(el))return rendering.get(el);const work=(async()=>{const q=list.find(x=>x.id===el.dataset.q);if(!q.regions.length||turn!==revision)return;const d=s.documents.find(x=>x.id===q.doc),pdf=await openPdf(await get('files',d.hash));try{for(const r of q.regions){if(turn!==revision)return;const c=document.createElement('canvas');await paint(pdf,r.page,c,1600,r);el.querySelector('.crops').append(c)}}finally{await pdf.destroy()}})();rendering.set(el,work);return work}
  let queue=Promise.resolve();const elements=[...app.querySelectorAll('[data-q]')],obs=new IntersectionObserver(entries=>{for(const e of entries)if(e.isIntersecting){obs.unobserve(e.target);queue=queue.then(()=>render(e.target)).catch(err=>notice(err.message))}});elements.forEach(el=>obs.observe(el));cleanup=()=>obs.disconnect();
- on('print',async()=>{if(!list.length)return notice('출력할 문항이 없습니다.');if(list.some(q=>!q.regions.length)&&!confirm('영역 미지정 문항은 출처만 출력됩니다. 계속할까요?'))return;for(const el of elements)await render(el);window.print()});
+ on('print',async()=>{if(!list.length)return notice('출력할 문항이 없습니다.');if(list.some(q=>!q.regions.length)&&!confirm('영역 미지정 문항은 출처만 출력됩니다. 계속할까요?'))return;const btn=$('#print');btn.disabled=true;
+ try{
+   const file=await notebookPdf(s,list,'누적 오답노트 · '+(ts.find(t=>t.id===theme)?.title||'전체 테마'),(i,n)=>{btn.textContent='생성 중 '+i+' / '+n});
+   const url=URL.createObjectURL(file);
+   modal('<h2>A4 PDF</h2><a id="pdfpreview" class="btn" target="_blank" rel="noopener">PDF 미리보기</a>'+action('pdfsave','파일 저장','primary')+action('pdfshare','공유'));
+   $('#pdfpreview').href=url;
+   $('#modal').addEventListener('close',()=>setTimeout(()=>URL.revokeObjectURL(url),60000),{once:true});
+   on('pdfsave',()=>download(file,file.name));
+   on('pdfshare',async()=>{if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file]});else download(file,file.name)});
+ }finally{btn.disabled=false;btn.textContent='A4 PDF 출력'}});
  app.querySelectorAll('[data-detail]').forEach(b=>b.onclick=guard(()=>{const q=list.find(x=>x.id===b.dataset.detail),d=s.documents.find(x=>x.id===q.doc);modal('<h2>'+q.number+'번 복습</h2><label>주 테마<select id="qt">'+themePicker(ts.filter(t=>t.subject===d.subject),q.theme)+'</select></label><label>숙지 상태<select id="st">'+options(['미복습','복습 필요','부분 이해','숙지 완료'],q.status)+'</select></label><label>메모<textarea id="memo">'+esc(q.memo)+'</textarea></label>'+action('qsave','저장','primary'));on('qsave',async()=>{await change(v=>{const row=v.questions.find(x=>x.id===q.id);row.theme=$('#qt').value||null;row.status=$('#st').value;row.memo=$('#memo').value;v.reviews.push({id:uid(),q:q.id,date:stamp(),status:row.status})});$('#modal').close();await show()})}));
  function output(title,value){modal('<h2>'+title+'</h2><textarea id="out"></textarea><div class="row">'+action('copy','복사')+action('dl','파일 저장')+'</div>');$('#out').value=value;on('copy',async()=>{try{await navigator.clipboard.writeText(value);notice('복사했습니다.')}catch{$('#out').select();notice('선택한 내용을 복사하세요.')}});on('dl',()=>download(new Blob([value],{type:'text/plain;charset=utf-8'}),'Yu-study.txt'))}
  const rows=list.map(q=>{const d=s.documents.find(d=>d.id===q.doc);return {questionId:q.id,subject:d.subject,year:d.year,exam:d.exam,number:q.number,primaryThemeId:q.theme,count:count.get(q.id),status:q.status}});

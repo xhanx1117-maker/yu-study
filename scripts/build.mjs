@@ -20,6 +20,8 @@ export async function buildApp(portable=true){
   await copy(path.join(mods,'jszip/LICENSE.markdown'),'vendor/jszip-LICENSE.txt');
   await copy(path.join(mods,'pdfjs-dist/LICENSE'),'vendor/pdfjs-LICENSE.txt');
   async function list(dir){let out=[];for(const e of await readdir(dir,{withFileTypes:true})){const f=path.join(dir,e.name);out.push(...(e.isDirectory()?await list(f):[path.relative(dist,f).split(path.sep).join('/')]));}return out;}
+  await copy(path.join(mods,'pdf-lib/dist/pdf-lib.min.js'),'vendor/pdf-lib.min.js');
+  await copy(path.join(mods,'pdf-lib/LICENSE.md'),'vendor/pdf-lib-LICENSE.txt');
   const files=(await list(dist)).filter(x=>x!=='sw.js').sort();
   const hash=createHash('sha256');
   for(const f of files)hash.update(f).update(await readFile(path.join(dist,f)));
