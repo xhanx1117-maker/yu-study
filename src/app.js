@@ -1,10 +1,10 @@
-import {subjects,stats,themes,infer} from './model.js';
+import {subjects,themes,infer} from './model.js';
 import {state,change} from './db.js';
 import {pdfPicker,savePdf,importError} from './import-pdf.js';
 import {$,esc,options,action,on,pick,notice,guard,modal} from './ui.js';
 import {backup,restore} from './backup.js';
 import {mountNotebook, resetNotebook} from './notebook.js';
-import {changeDocumentSubject} from './notebook-model.js';
+import {changeDocumentSubject,notebookIndex,groupCounts,totals} from './notebook-model.js';
 import {reader} from './reader.js';
 const menus=['홈','자료실','오답노트','취약 영역','설정'],app=$('#app');
 let section='홈',revision=0,cleanup,subject='',year='',exam='',query='',trash=false;
@@ -13,7 +13,7 @@ nav.onclick=guard(e=>{const b=e.target.closest('button');if(b)return show(menus[
 const uid=()=>crypto.randomUUID(),allThemes=s=>themes({schemaVersion:1,books:s.books});
 const header=(name,buttons='')=>'<div class="toolbar"><h1>'+name+'</h1><div class="row">'+buttons+'</div></div>';
 function empty(msg){return '<p class="empty">'+msg+'</p>'}
-async function show(name=section,id,number){section=name;const turn=++revision;cleanup?.();cleanup=null;nav.querySelectorAll('button').forEach((b,i)=>{if(menus[i]===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});app.innerHTML='<p>자료를 불러오는 중…</p>';const s=await state();if(turn!==revision)return;const count=stats(s),qs=s.questions.filter(q=>count.has(q.id)),docs=s.documents.filter(d=>!d.deleted);
+async function show(name=section,id,number){section=name;app.ondrop=app.ondragover=null;const turn=++revision;cleanup?.();cleanup=null;nav.querySelectorAll('button').forEach((b,i)=>{if(menus[i]===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});app.innerHTML='<p>자료를 불러오는 중…</p>';const s=await state();if(turn!==revision)return;const docs=s.documents.filter(d=>!d.deleted);
  if(id){
    try{
      const end=await reader(id,()=>turn===revision,number);
@@ -31,15 +31,20 @@ async function show(name=section,id,number){section=name;const turn=++revision;c
    return;
  }
  if(name==='홈'){
- app.innerHTML=header('학습 서재',pdfPicker())+'<p class="sub">자료는 현재 기기에 저장됩니다.</p>'+'<div class="grid">'+subjects.map((sub,i)=>'<button class="card" data-sub="'+i+'"><strong class="subjectmark">'+sub+'</strong><small>자료 '+docs.filter(d=>d.subject===sub).length+' · 오답 '+qs.filter(q=>s.documents.find(d=>d.id===q.doc)?.subject===sub).length+'</small></button>').join('')+'</div><h2>최근 열람한 PDF</h2>'+docList(docs.filter(d=>d.opened).sort((a,b)=>b.opened.localeCompare(a.opened)).slice(0,4))+'<h2>복습할 문제</h2><div class="row">'+action('unc','미분류 '+qs.filter(q=>!q.theme).length+'문항')+action('rep','반복 오답 '+qs.filter(q=>count.get(q.id)>1).length+'문항')+'</div><p class="sub">최근 백업 · '+esc(s.lastBackup?.slice(0,10)||'아직 없음')+'</p>';
+ const groups=groupCounts(notebookIndex(s).rows),unique=key=>groups.get(key)?.unique||0;
+ app.innerHTML=header('학습 서재',pdfPicker())+'<p class="sub">자료는 현재 기기에 저장됩니다.</p>'+'<div class="grid">'+subjects.map((sub,i)=>'<button class="card" data-sub="'+i+'"><strong class="subjectmark">'+sub+'</strong><small>자료 '+docs.filter(d=>d.subject===sub).length+' · 오답 '+unique('subject:'+sub)+'</small></button>').join('')+'</div><h2>최근 열람한 PDF</h2>'+docList(docs.filter(d=>d.opened).sort((a,b)=>b.opened.localeCompare(a.opened)).slice(0,4))+'<h2>복습할 문제</h2><div class="row">'+action('unc','미분류 '+unique('kind:unassigned')+'문항')+action('rep','반복 오답 '+unique('kind:repeated')+'문항')+'</div><p class="sub">최근 백업 · '+esc(s.lastBackup?.slice(0,10)||'아직 없음')+'</p>';
  app.querySelectorAll('[data-sub]').forEach(b=>b.onclick=guard(()=>{subject=subjects[b.dataset.sub];year=exam=query='';trash=false;return show('자료실')}));on('unc',()=>{resetNotebook({kind:'unassigned'});return show('오답노트')});on('rep',()=>{resetNotebook({kind:'repeated'});return show('오답노트')});
  }else if(name==='자료실'){
  const filtered=s.documents.filter(d=>!!d.deleted===trash&&(!subject||d.subject===subject)&&(!year||d.year===year)&&(!exam||d.exam===exam)&&(!query||[d.title,d.tags].join(' ').includes(query)));
  app.innerHTML=header('자료실',action('trash',trash?'자료실 보기':'휴지통')+pdfPicker())+'<div class="row filters"><label>과목<select id="subject">'+options(['전체 과목',...subjects,'미분류'],subject)+'</select></label><label>연도<select id="year">'+options(['전체 연도',...new Set(docs.map(d=>d.year).filter(Boolean).sort().reverse())],year)+'</select></label><label>시험<select id="exam">'+options(['전체 시험',...s.examTypes],exam)+'</select></label><label>제목·태그 검색<input id="query" type="search" value="'+esc(query)+'"></label></div>'+docList(filtered.sort((a,b)=>Number(b.favorite)-Number(a.favorite)||b.year.localeCompare(a.year)),true);
  on('subject',e=>{subject=e.target.selectedIndex?e.target.value:'';return show()},'change');on('year',e=>{year=e.target.selectedIndex?e.target.value:'';return show()},'change');on('exam',e=>{exam=e.target.selectedIndex?e.target.value:'';return show()},'change');on('query',e=>{query=e.target.value;return show()},'change');on('trash',()=>{trash=!trash;return show()});
  app.querySelectorAll('[data-edit]').forEach(b=>b.onclick=guard(()=>editDoc(s,s.documents.find(d=>d.id===b.dataset.edit))));app.ondragover=e=>e.preventDefault();app.ondrop=guard(async e=>{e.preventDefault();await imports([...e.dataTransfer.files])});
- }else if(name==='설정'){await settings(s)}else if(name==='취약 영역'){const ts=allThemes(s),rows=[...new Set(qs.map(q=>q.theme))].map(id=>{const list=qs.filter(q=>q.theme===id);return {id,list,total:list.reduce((a,q)=>a+count.get(q.id),0)}}).sort((a,b)=>b.total-a.total);
- app.innerHTML=header('취약 영역')+'<p>고유 오답 '+qs.length+'문항 · 누적 오답 '+s.events.length+'회 · 반복 오답 '+qs.filter(q=>count.get(q.id)>1).length+'문항</p><h2>테마별 오답 빈도</h2>'+ (rows.map(r=>'<button data-theme="'+esc(r.id||'')+'" class="item">'+esc(ts.find(t=>t.id===r.id)?.title||'미분류')+' · '+r.list.length+'문항 / '+r.total+'회 · 미숙지 '+r.list.filter(q=>q.status!=='숙지 완료').length+'</button>').join('')||empty('오답을 기록하면 테마별 빈도가 표시됩니다.'));
+ }else if(name==='설정'){await settings(s)}else if(name==='취약 영역'){
+ const index=notebookIndex(s),counts=groupCounts(index.rows),all=totals(index.rows);
+ const groups=[...index.catalog.map(t=>({id:t.id,title:t.title,count:counts.get('theme:'+t.id)})),{id:'',title:'미분류',count:counts.get('kind:unassigned')}]
+   .filter(row=>row.count).sort((a,b)=>b.count.events-a.count.events);
+ app.innerHTML=header('취약 영역')+'<p>고유 오답 '+all.unique+'문항 · 누적 오답 '+all.events+'회 · 반복 오답 '+all.repeated+'문항</p><h2>테마별 오답 빈도</h2>'+
+   (groups.map(({id,title,count})=>'<button data-theme="'+esc(id)+'" class="item">'+esc(title)+' · '+count.unique+'문항 / '+count.events+'회 · 미숙지 '+count.learning+'문항</button>').join('')||empty('오답을 기록하면 테마별 빈도가 표시됩니다.'));
  app.querySelectorAll('[data-theme]').forEach(b=>b.onclick=guard(()=>{resetNotebook(b.dataset.theme?{themeIds:[b.dataset.theme]}:{kind:'unassigned'});return show('오답노트')}));
  }else{
    app.ondrop=app.ondragover=null;

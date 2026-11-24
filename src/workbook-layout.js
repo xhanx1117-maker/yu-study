@@ -73,14 +73,17 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
     const wide=['one','individual','original'].includes(options.mode)||item.full ||
       (options.mode==='auto'&&item.parts.some(p=>p.oneColumn)) || widest*requested>colWidth/.90;
     const usable=wide?full:colWidth;
-    const captions=blockLabels(item,usable);
+    const captions=blockLabels(item,usable),labelHeight=captions.reduce((n,l)=>n+l.h,0);
     const tiles=[];
     for(const part of item.parts){
       let scale=Math.min(requested,usable/part.width);
       // A very wide foldout is printed in overlapping panels rather than tiny type.
       const tiled=scale<requested*.76 && !part.wholePage;
       if(tiled)scale=requested;
-      if(part.wholePage)scale=Math.min(scale,(bottom-top-Math.min(80,captions.reduce((n,l)=>n+l.h,0)))/part.height);
+      if(part.wholePage){
+        const available=bottom-top-labelHeight;
+        scale=Math.min(scale,(available>=(bottom-top)*.52?available:bottom-top)/part.height);
+      }
       const stripWidth=Math.min(part.width,usable/scale);
       for(let left=0;left<part.width-.01;){
         const width=Math.min(stripWidth,part.width-left);
@@ -89,7 +92,6 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
         left+=width-Math.min(8,width*.05);
       }
     }
-    const labelHeight=captions.reduce((n,l)=>n+l.h,0);
     const totalHeight=labelHeight+tiles.reduce((n,t)=>n+t.part.height*t.scale+2,0);
     if(totalHeight<=bottom-top)space(wide,totalHeight);
     else space(wide,Math.min(bottom-top,labelHeight+Math.min(tiles[0]?.part.height*tiles[0]?.scale||0,100)));
@@ -102,7 +104,7 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
     for(const tile of tiles){
       const {part,left,width,scale}=tile;
       let from=0;
-      if(part.height*scale<=bottom-top-labelHeight)space(wide,part.height*scale);
+      if(part.wholePage || part.height*scale<=bottom-top-labelHeight)space(wide,part.height*scale);
       while(from<part.height-.01){
         let room=(bottom-position(wide))/scale;
         if(room<Math.min(38/scale,part.height-from)){nextSlot(wide);continue}

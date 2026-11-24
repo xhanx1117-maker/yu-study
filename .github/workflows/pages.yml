@@ -20,6 +20,13 @@ jobs:
       - run: npm install --ignore-scripts
       - run: npm test
       - run: npm run build
+      - name: Install Korean fonts for rendered fixtures
+        run: sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk
+      - name: Compare rendered workbooks with synthetic source PDFs in Chromium
+        run: node scripts/workbook-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+          YU_PROOF_DIR: ${{ runner.temp }}/workbook-proof
       - run: node scripts/browser-test.mjs
         env:
           YU_BROWSER: /usr/bin/google-chrome
@@ -33,6 +40,16 @@ jobs:
       - run: node scripts/browser-test.mjs
         env:
           YU_TEST_ENGINE: webkit
+      - name: Verify workbook rendering and touch editing in WebKit
+        run: node scripts/workbook-test.mjs
+        env:
+          YU_TEST_ENGINE: webkit
+      - name: Save synthetic PDF render comparisons
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbook-render-comparison
+          path: ${{ runner.temp }}/workbook-proof
+          retention-days: 14
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

@@ -7,9 +7,10 @@ import {openDetail,openTrash,confirmRemoval,selectOptions,themeName} from './not
 import {openPrint} from './print-ui.js';
 
 let filters=emptyFilters(), editing=false, page=0;
+let filtersOpen=false, groupOpen=false, groupType='kind';
 const chosen=new Set(), pageSize=28;
 export function resetNotebook(values={}){
-  filters={...emptyFilters(),...values};chosen.clear();page=0;editing=false;
+  filters={...emptyFilters(),...values};chosen.clear();page=0;editing=false;groupType='kind';
 }
 const button=(id,label,style='')=>'<button id="'+id+'" class="'+style+'">'+label+'</button>';
 const facets={kind:'분류',year:'연도',book:'교재',part:'PART',chapter:'CHAPTER',theme:'테마'};
@@ -22,7 +23,7 @@ const drop=(id,label,choices,current,placeholder='전체')=>'<label>'+label+'<se
 
 export function mountNotebook(app,archive,hooks){
   const index=notebookIndex(archive), globalCounts=groupCounts(index.rows);
-  let list=[], filtersOpen=false, groupOpen=false, groupType='kind';
+  let list=[];
   let timer;
   function selected(){return list.filter(row=>chosen.has(row.id))}
   function counts(key){return globalCounts.get(key)?.unique||0}

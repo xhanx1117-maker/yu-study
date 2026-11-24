@@ -69,6 +69,23 @@ function labelsFor(row,options,seq,indexTheme) {
   return labels;
 }
 
+// Old automatic rectangles can end at the next question number and include the
+// following common passage. Carve that explicitly identified band out of the body.
+function withoutPassages(region,passages){
+  let strips=[region];
+  for(const p of passages){
+    if(p.page!==region.page||p.x>region.x+.00001||p.x+p.w<region.x+region.w-.00001)continue;
+    strips=strips.flatMap(r=>{
+      const start=Math.max(r.y,p.y),end=Math.min(r.y+r.h,p.y+p.h);
+      if(end<=start+.00001)return [r];
+      const result=[];
+      if(start-r.y>.00001)result.push({...r,h:start-r.y});
+      if(r.y+r.h-end>.00001)result.push({...r,y:end,h:r.y+r.h-end});
+      return result;
+    });
+  }
+  return strips;
+}
 export async function prepareWorkbook(archive,rows,filters,input,signal,progress){
   const options=printSettings(input),seen=new Set(),originalPages=new Map(),partsByDoc=new Map();
   const docs=new Map(archive.documents.map(d=>[d.id,d]));
@@ -86,6 +103,11 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
     const pages=partsByDoc.get(doc.id);
     if(!pages.has(r.page))pages.set(r.page,[]);
     pages.get(r.page).push(part);return part;
+  }
+  const passagesByDoc=new Map();
+  for(const {doc,question} of unique){
+    if(!passagesByDoc.has(doc.id))passagesByDoc.set(doc.id,Object.values(doc.detected||{}).flatMap(q=>(q.regions||[]).filter(r=>r.shared)));
+    for(const r of question.regions.filter(r=>r.shared))passagesByDoc.get(doc.id).push(r);
   }
   let lastTheme;
   for(const [i,row] of unique.entries()){
@@ -110,7 +132,8 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
           if(shared.has(key))continue;
           shared.add(key);
         }
-        parts.push(register(doc,r,{trim:q.reviewed===false}));
+        const trim=q.reviewed===false;
+        for(const area of trim&&!r.shared?withoutPassages(r,passagesByDoc.get(doc.id)):[r])parts.push(register(doc,area,{trim}));
       }
       items.push({id:q.id,labels,parts});
     }

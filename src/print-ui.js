@@ -33,9 +33,10 @@ export function openPrint(archive,rows,filters){
     if(url){URL.revokeObjectURL(url);url=null}readyFile=null;
     const result=$('#proof-result',section);if(result)result.innerHTML='';
   }
-  function abort(){revision++;controller?.abort();discard()}
+  function abort(){revision++;controller?.abort();discard();section.removeEventListener('change',optionChanged)}
   dialog.addEventListener('close',abort,{once:true});
-  section.addEventListener('change',()=>{if(readyFile){discard();$('#print-status').textContent='설정이 변경되었습니다. 미리보기를 다시 생성하세요.'}});
+  function optionChanged(){if(readyFile){discard();$('#print-status').textContent='설정이 변경되었습니다. 미리보기를 다시 생성하세요.'}}
+  section.addEventListener('change',optionChanged);
   on('stop-print',()=>controller?.abort());
   function busy(active){
     section.querySelectorAll('select,input,#make-proof').forEach(el=>el.disabled=active);
@@ -74,7 +75,7 @@ export function openPrint(archive,rows,filters){
       $('#pdfpreview').href=url;on('pdfsave',()=>download(file,file.name));on('pdfshare',async()=>{if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file]});else download(file,file.name)});
       on('proof-prev',()=>{index=Math.max(1,index-1);return display()});on('proof-next',()=>{index=Math.min(proof.numPages,index+1);return display()});
       await display();signal.throwIfAborted();
-      await change(s=>{s.printSettings=selected});
+      await change(s=>{s.printSettings=selected});archive.printSettings=selected;
       if(token===revision)$('#print-status').textContent=book.questionCount+'문항 · '+book.plan.pages.length+'쪽';
     }catch(error){if(token===revision){discard();$('#print-status').textContent=signal.aborted?'출력을 취소했습니다.':error.message}}
     finally{if(token===revision)busy(false)}
