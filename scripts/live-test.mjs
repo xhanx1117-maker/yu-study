@@ -48,10 +48,15 @@ try{
   assert.equal(offline.fromServiceWorker(),true);
   await page.getByRole('heading',{name:'학습 서재'}).waitFor();
   await page.getByRole('button',{name:'오답노트',exact:true}).click();
+  await page.locator('[data-subject="영어"]').click();
+  await page.locator('[data-detail]').first().click();
   await page.locator('.crops canvas').waitFor();
+  await page.locator('dialog form button').click();
+  await page.locator('#print').click();await page.locator('#make-proof').click();
+  await page.locator('#proof-canvas canvas').waitFor();
   assert.equal(await page.locator('[data-q]').count(),1);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({version,url,status:response.status(),registration,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering']}));
+  console.log(JSON.stringify({version,url,status:response.status(),registration,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline workbook preview']}));
 }finally{
   await browser?.close();
   clearTimeout(deadline);

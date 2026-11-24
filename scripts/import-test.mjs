@@ -208,8 +208,8 @@ try{
   console.log(engine+': original File PDF still readable');
 
   await page.getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByText('기기 저장 · v0.2.0').waitFor();
-  assert.equal(await page.getByText('기기 저장 · v0.2.0').count(),1);
+  await page.getByText('기기 저장 · v0.3.0').waitFor();
+  assert.equal(await page.getByText('기기 저장 · v0.3.0').count(),1);
   assert.equal(await page.getByRole('button',{name:/Dropbox/}).count(),0);
   const choosing=page.waitForEvent('filechooser');
   await page.locator('#seed').click();

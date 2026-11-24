@@ -1,12 +1,12 @@
 name: Test and publish Yu study
 on:
   push:
-    branches: [main]
+    branches: [main, notebook-workbooks-v03]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
@@ -37,6 +37,7 @@ jobs:
         with:
           path: dist
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10

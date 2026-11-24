@@ -3,10 +3,11 @@ import {record,stats} from './model.js';
 import {openPdf,paint,detect} from './pdf.js';
 import {$,esc,notice,guard,on,action} from './ui.js';
 import {download} from './backup.js';
-export async function reader(id,alive){
+export async function reader(id,alive,questionNumber){
  const s=await state(),d=s.documents.find(x=>x.id===id);if(!d||!alive())return;
  const blob=await get('files',d.hash),pdf=await openPdf(blob);if(!alive()){await pdf.destroy();return}
- let page=Math.min(d.page||1,pdf.numPages),zoom=1,regionN=1,edit=false,busy=false,session=d.session,detected=d.detected||{},selected=new Set(),rev=0;
+ const focus=d.detected?.[questionNumber] || s.questions.find(q=>q.doc===id && q.number===questionNumber);
+ let page=Math.min(focus?.regions?.[0]?.page||d.page||1,pdf.numPages),zoom=1,regionN=questionNumber||1,edit=false,busy=false,session=d.session,detected=d.detected||{},selected=new Set(),rev=0;
  const app=$('#app');app.innerHTML='<h1>'+esc(d.title)+'</h1><div class="workspace"><div><div class="row">'+action('prev','이전')+'<label>페이지 <input id="pg" type="number" min="1" max="'+pdf.numPages+'" value="'+page+'"></label><span>/ '+pdf.numPages+'</span>'+action('next','다음')+action('zoom','확대')+action('original','원본 저장')+'</div><div class="sheet"><div class="paper"><canvas></canvas></div></div></div><div><details class="box" open><summary>오답 등록</summary><label>풀이 회차 <select id="sessions"></select></label>'+action('newSession','새 회차')+'<div class="numbers"></div>'+action('save','선택 저장','primary')+'</details><details class="box"><summary>문항 영역 검수</summary><label>문항 번호 <input id="rn" type="number" min="1" max="'+d.count+'" value="1"></label>'+action('auto','자동 인식')+action('drag','영역 그리기')+action('whole','현재 페이지 추가')+action('undoReg','마지막 영역 제거')+action('resetReg','영역 초기화')+'<p class="sub" id="reginfo"></p></details></div></div>';
  async function saveDoc(fn){await change(v=>{fn(v.documents.find(x=>x.id===id),v)})}
  async function panel(){const v=await state();if(!alive())return;const list=v.sessions.filter(a=>a.doc===id);$('#sessions').innerHTML=list.map((a,i)=>'<option value="'+esc(a.id)+'" '+(a.id===session?'selected':'')+'>'+ (i+1)+'회 · '+esc(a.date.slice(0,10))+'</option>').join('');selected=new Set(v.events.filter(e=>e.session===session).map(e=>e.number));const counts=stats(v);$('.numbers').innerHTML=Array.from({length:d.count},(_,i)=>{const n=i+1,q=v.questions.find(q=>q.doc===id&&q.number===n),count=counts.get(id+'#'+n)||0;return '<button data-n="'+n+'" aria-pressed="'+selected.has(n)+'" class="'+(selected.has(n)?'selected':'')+'">'+String(n).padStart(2,'0')+'<small>'+(selected.has(n)?'✓ ':'')+(count?count+'회':'')+(q?.status==='숙지 완료'?' ✔':'')+'</small></button>'}).join('')}
@@ -24,5 +25,5 @@ export async function reader(id,alive){
  on('drag',()=>{edit=!edit;$('.paper').classList.toggle('edit',edit);$('#drag').textContent=edit?'그리기 종료':'영역 그리기'});on('whole',()=>updateRegions(rs=>rs.push({page,x:0,y:0,w:1,h:1})));on('undoReg',()=>updateRegions(rs=>rs.pop()));on('resetReg',()=>updateRegions(rs=>rs.splice(0)));
  const paper=$('.paper');let start;function point(e){const r=paper.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))]}
  paper.onpointerdown=e=>{if(edit){paper.setPointerCapture(e.pointerId);start=point(e)}};paper.onpointercancel=()=>start=null;paper.onpointerup=guard(async e=>{if(!start)return;const end=point(e),[a,b]=start;start=null;const [x,y]=end,w=Math.abs(x-a),h=Math.abs(y-b);if(w>.01&&h>.01)await updateRegions(rs=>rs.push({page,x:Math.min(a,x),y:Math.min(b,y),w,h}))});
- await panel();await draw();if(!d.scanned&&alive())guard(scan)();return ()=>pdf.destroy()
+ $('#rn').value=regionN;await panel();await draw();if(!d.scanned&&alive())guard(scan)();return ()=>pdf.destroy()
 }
