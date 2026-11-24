@@ -205,7 +205,11 @@ try{
   await page.getByRole('button',{name:'자료실',exact:true}).click();
   await page.locator('[data-doc="legacy"]').click();
   await page.waitForFunction(()=>document.querySelector('#reginfo')?.textContent.includes('영역 1개'));
-  console.log(engine+': original File PDF still readable');
+  for(let retry=0;retry<60&&!(await saved()).documents.find(d=>d.id==='legacy').scanned;retry++)await page.waitForTimeout(100);
+  const checked=await saved();
+  assert.equal(checked.documents.find(d=>d.id==='legacy').scanned,true);
+  assert.deepEqual(checked.questions.find(q=>q.id==='legacy#1').regions,archive.questions[0].regions);
+  console.log(engine+': original File PDF and legacy question-only coordinates preserved after automatic scan');
 
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByText('기기 저장 · v0.3.0').waitFor();

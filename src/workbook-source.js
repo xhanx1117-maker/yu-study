@@ -104,10 +104,33 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
     if(!pages.has(r.page))pages.set(r.page,[]);
     pages.get(r.page).push(part);return part;
   }
-  const passagesByDoc=new Map();
+  const regionId=(hash,r)=>[hash,r.page,...[r.x,r.y,r.w,r.h].map(v=>v.toFixed(6))].join('/');
+  const passagesByDoc=new Map(),knownShared=new Set(),owners=new Map();
+  function mark(doc,r){
+    const key=regionId(doc.hash,r);
+    if(knownShared.has(key))return;
+    knownShared.add(key);
+    if(!passagesByDoc.has(doc.id))passagesByDoc.set(doc.id,[]);
+    passagesByDoc.get(doc.id).push(r);
+  }
+  for(const doc of new Set(unique.map(row=>row.doc))){
+    for(const q of Object.values(doc.detected||{}))for(const r of q.regions||[])if(r.shared)mark(doc,r);
+  }
   for(const {doc,question} of unique){
-    if(!passagesByDoc.has(doc.id))passagesByDoc.set(doc.id,Object.values(doc.detected||{}).flatMap(q=>(q.regions||[]).filter(r=>r.shared)));
-    for(const r of question.regions.filter(r=>r.shared))passagesByDoc.get(doc.id).push(r);
+    for(const r of question.regions){
+      const key=regionId(doc.hash,r);
+      if(!owners.has(key))owners.set(key,new Set());
+      owners.get(key).add(question.id);
+      if(r.shared)mark(doc,r);
+    }
+  }
+  // Older manual crops had no shared flag. Every participant must also have a
+  // distinct body, otherwise identical whole-page crops are ambiguous.
+  const individualBodies=new Set(unique.filter(({doc,question})=>question.regions.some(r=>
+    !r.shared&&owners.get(regionId(doc.hash,r)).size===1)).map(row=>row.id));
+  for(const {doc,question} of unique)for(const r of question.regions){
+    const ids=owners.get(regionId(doc.hash,r));
+    if(ids.size>1&&[...ids].every(id=>individualBodies.has(id)))mark(doc,r);
   }
   let lastTheme;
   for(const [i,row] of unique.entries()){
@@ -126,14 +149,15 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
       }
     }else{
       const parts=[];
-      for(const r of q.regions){
-        if(r.shared){
-          const key=[doc.hash,r.page,...[r.x,r.y,r.w,r.h].map(v=>v.toFixed(6))].join('/');
+      const isPassage=r=>knownShared.has(regionId(doc.hash,r));
+      for(const r of [...q.regions.filter(isPassage),...q.regions.filter(r=>!isPassage(r))]){
+        if(isPassage(r)){
+          const key=regionId(doc.hash,r);
           if(shared.has(key))continue;
           shared.add(key);
         }
         const trim=q.reviewed===false;
-        for(const area of trim&&!r.shared?withoutPassages(r,passagesByDoc.get(doc.id)):[r])parts.push(register(doc,area,{trim}));
+        for(const area of trim&&!isPassage(r)?withoutPassages(r,passagesByDoc.get(doc.id)||[]):[r])parts.push(register(doc,area,{trim}));
       }
       items.push({id:q.id,labels,parts});
     }

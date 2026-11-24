@@ -40,6 +40,11 @@ try{
     const r=await navigator.serviceWorker.ready;
     return {scope:r.scope,script:r.active.scriptURL};
   });
+  const manifest=await page.evaluate(async()=>{
+    const href=document.querySelector('link[rel=manifest]').href,data=await (await fetch(href)).json();
+    return {name:data.name,start:new URL(data.start_url,href).href,scope:new URL(data.scope,href).href,display:data.display};
+  });
+  assert.deepEqual(manifest,{name:'Yu: study',start:url,scope:url,display:'standalone'});
   assert.equal(registration.scope,url);
   assert.equal(registration.script,url+'sw.js');
   await page.waitForFunction(()=>navigator.serviceWorker.controller?.state==='activated');
@@ -56,7 +61,7 @@ try{
   await page.locator('#proof-canvas canvas').waitFor();
   assert.equal(await page.locator('[data-q]').count(),1);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({version,url,status:response.status(),registration,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline workbook preview']}));
+  console.log(JSON.stringify({version,url,status:response.status(),registration,manifest,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline workbook preview']}));
 }finally{
   await browser?.close();
   clearTimeout(deadline);

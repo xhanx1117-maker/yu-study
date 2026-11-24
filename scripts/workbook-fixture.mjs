@@ -3,7 +3,7 @@ import {createRequire} from 'node:module';
 import {initial,record} from '../src/model.js';
 
 const require=createRequire(import.meta.url);
-const {PDFDocument,StandardFonts,rgb,degrees}=require('pdf-lib');
+const {PDFDocument,PDFName,StandardFonts,rgb,degrees}=require('pdf-lib');
 const mm=72/25.4, W=210*mm,H=297*mm;
 const box=(page,x,y,w,h,width=W,height=H)=>({page,x:x/width,y:y/height,w:w/width,h:h/height});
 const titles=['Public records','Review dates','A fictional timetable','Study sessions',
@@ -70,16 +70,16 @@ export async function fixture(koreanPng){
   first.drawText('Reading item one',{x:40,y:H-299,size:10});
   first.drawText('Reading item two',{x:40,y:H-429,size:10});
   next.drawText('Continuation of item one',{x:40,y:530,size:10});
-  const shared={...box(1,30,80,530,140),shared:true};
+  const shared=box(1,30,80,530,140); // Old manual crops had no shared flag.
   structure(s,meta('korean','가상 독해','국어','2024',addFile(await reading.save()),2),
     {1:[shared,box(1,30,260,530,110),box(2,30,65,380,85,450,630)],2:[shared,box(1,30,390,530,110)]},[1,2],null);
   s.questions.find(q=>q.id==='korean#1').solution={text:'연습 정답 ②',doc:null,page:null};
   const rotated=await PDFDocument.create(),r=rotated.addPage([400,600]);
   r.drawText('ROTATED MARKER',{x:80,y:170,size:10});
   r.drawRectangle({x:80,y:180,width:48,height:4,color:rgb(.05,.45,.85)});
-  r.setRotation(degrees(90));
-  // For Rotate 90 the scale-1 viewport maps original (x,y) to (y,x).
-  structure(s,meta('english','회전 연습','영어','2024',addFile(await rotated.save()),1),{1:[box(1,145,65,105,155,600,400)]},[1],null);
+  r.setCropBox(10,20,360,555);r.node.set(PDFName.of('UserUnit'),rotated.context.obj(1.25));r.setRotation(degrees(90));
+  // Rotated crop box with nonzero origin and a non-default physical user unit.
+  structure(s,meta('english','회전 연습','영어','2024',addFile(await rotated.save()),1),{1:[box(1,156.25,68.75,131.25,193.75,693.75,450)]},[1],null);
   const admin=await PDFDocument.create(),a=admin.addPage([W,H]);
   a.drawText('Administrative practice',{x:37,y:721,size:10});
   structure(s,meta('admin','행정 연습','행정학','2025',addFile(await admin.save()),2),

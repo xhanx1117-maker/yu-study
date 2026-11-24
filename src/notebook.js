@@ -23,6 +23,7 @@ const drop=(id,label,choices,current,placeholder='전체')=>'<label>'+label+'<se
 
 export function mountNotebook(app,archive,hooks){
   const index=notebookIndex(archive), globalCounts=groupCounts(index.rows);
+  const groupsBySubject=new Map([['',{rows:index.rows,counts:globalCounts}]]);
   let list=[];
   let timer;
   function selected(){return list.filter(row=>chosen.has(row.id))}
@@ -32,8 +33,16 @@ export function mountNotebook(app,archive,hooks){
   }
   function draw(){
     list=filterRows(index.rows,filters);
+    if(chosen.size){
+      const visibleIds=new Set(list.map(row=>row.id));
+      for(const id of chosen)if(!visibleIds.has(id))chosen.delete(id);
+    }
     page=Math.max(0,Math.min(page,Math.ceil(list.length/pageSize)-1));
-    const subjectRows=index.rows.filter(row=>!filters.subject||row.doc.subject===filters.subject);
+    if(!groupsBySubject.has(filters.subject)){
+      const rows=index.rows.filter(row=>row.doc.subject===filters.subject);
+      groupsBySubject.set(filters.subject,{rows,counts:groupCounts(rows)});
+    }
+    const {rows:subjectRows,counts:scopedCounts}=groupsBySubject.get(filters.subject);
     const catalog=index.catalog.filter(t=>!filters.subject||t.subject===filters.subject);
     const bookThemes=catalog.filter(t=>!filters.book||t.book===filters.book);
     const partThemes=bookThemes.filter(t=>!filters.part||t.partId===filters.part);
@@ -57,7 +66,6 @@ export function mountNotebook(app,archive,hooks){
       (partThemes.some(t=>t.chapterId)?drop('f-chapter','CHAPTER',uniquePairs(partThemes.map(t=>[t.chapterId,t.chapterTitle])),filters.chapter):'')+
       '<label>정렬<select id="f-sort">'+Object.entries(orders).map(([id,name])=>'<option value="'+id+'" '+(filters.sort===id?'selected':'')+'>'+name+'</option>').join('')+'</select></label></div>'+
       themeMenu+'<label>문제 텍스트 검색<input id="f-search" type="search" value="'+esc(filters.search)+'" placeholder="문제 본문, 시험지명, 메모"></label>'+button('f-clear','필터 초기화')+'</details>';
-    const scopedCounts=groupCounts(subjectRows);
     const groupChoices={kind:Object.entries(kinds),year:plainOptions(subjectRows.map(r=>r.doc.year)),book:uniquePairs(catalog.map(t=>[t.book,t.path.split(' › ')[0]])),
       part:uniquePairs(catalog.map(t=>[t.partId,t.partTitle])),chapter:uniquePairs(catalog.map(t=>[t.chapterId,t.chapterTitle])),theme:catalog.map(t=>[t.id,themeName(t)])};
     const groupPanel='<details id="group-panel" '+(groupOpen?'open':'')+'><summary>분류별 현황</summary><label>분류 기준<select id="group-type">'+Object.entries(facets).filter(([k])=>groupChoices[k].length).map(([k,name])=>'<option value="'+k+'" '+(groupType===k?'selected':'')+'>'+name+'</option>').join('')+'</select></label><div class="facet-list">'+

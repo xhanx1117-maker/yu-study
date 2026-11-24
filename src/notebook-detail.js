@@ -38,7 +38,8 @@ export async function renderRegions(container, row, width=1100){
   if(!row.question.regions.length){container.textContent='영역 미지정 · 원본에서 문항 영역을 지정하세요.';return}
   const pdf=await openPdf(await get('files',row.doc.hash));
   try{
-    for(const region of row.question.regions){
+    const regions=row.question.regions;
+    for(const region of [...regions.filter(r=>r.shared),...regions.filter(r=>!r.shared)]){
       if(!container.isConnected)return;
       const canvas=document.createElement('canvas');
       await paint(pdf,region.page,canvas,width,region);

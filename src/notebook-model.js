@@ -41,7 +41,7 @@ export function sortRows(rows, order) {
 export function filterRows(rows, f) {
   const search = f.search.trim().normalize('NFC').toLocaleLowerCase('ko'), ids = new Set(f.themeIds);
   return sortRows(rows.filter(({question:q, doc, count, linked}) => {
-    if ((f.subject && f.subject!==doc.subject) || (f.year && f.year!==doc.year) || (f.exam && f.exam!==doc.exam)) return false;
+    if ((f.subject && f.subject!==doc.subject) || (f.year && f.year!==String(doc.year??'')) || (f.exam && f.exam!==doc.exam)) return false;
     if (f.status && f.status!==q.status) return false;
     if (f.kind==='unassigned' && linked.length || f.kind==='repeated' && count<2 || f.kind==='learning' && q.status==='숙지 완료') return false;
     if (f.book || f.part || f.chapter || ids.size) {

@@ -133,6 +133,16 @@ try{
   async function saveAndInspect(name){
     const downloading=page.waitForEvent('download');await click('pdfsave');
     const bytes=fs.readFileSync(await (await downloading).path());
+    if(name==='workbook'&&hasVector){
+      const {PDFDocument,PDFRawStream,PDFName,decodePDFRawStream}=require('pdf-lib'),doc=await PDFDocument.load(bytes);
+      for(const [,object] of doc.context.enumerateIndirectObjects()){
+        if(!(object instanceof PDFRawStream)||object.dict.get(PDFName.of('Subtype'))===PDFName.of('Image'))continue;
+        const stream=Buffer.from(decodePDFRawStream(object).decode()).toString('latin1');
+        for(const word of ['EXCLUDED-HEADER','EXCLUDED-FOOTER','Neighbor outside selection']){
+          assert.ok(!stream.includes(word)&&!stream.toLowerCase().includes(Buffer.from(word).toString('hex')),'discarded neighboring content');
+        }
+      }
+    }
     if(out)fs.writeFileSync(path.join(out,name+'.pdf'),bytes);
     const sheets=await inspect(bytes);
     if(out&&sheets[0].png)fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(sheets[0].png,'base64'));
@@ -180,16 +190,51 @@ try{
   assert.equal(shared.length,2);assert.equal(shared.flatMap(p=>p.orange).length,1,'shared Korean bitmap once');
   await close();await tab('영어');await make('auto');const rotate=await saveAndInspect('rotated');await close();
   const [x1,y1,x2,y2]=rotate[0].blueBounds;
-  assert.ok(y2-y1>=92&&y2-y1<=98&&x2-x1<=9,'rotated crop keeps orientation and 48 pt length');
+  assert.ok(y2-y1>=116&&y2-y1<=122&&x2-x1<=10,'rotated crop keeps orientation and 60 pt length at UserUnit 1.25');
   await tab('행정법');await summary('#filters');await page.locator('#f-year').selectOption('2025');await hasCount(7);
   await make('original');const original=await saveAndInspect('original');assert.equal(original.length,1);assert.ok(original[0].outside>100);await close();
   await click('edit-notebook');await page.locator('[data-pick="law#1"]').check();await page.locator('[data-pick="law#3"]').check();
   await make('individual','bulk-print');const singles=await saveAndInspect('individual');assert.equal(singles.length,2);
   assert.ok(singles.every(s=>s.strips.length===1));await close();
+  // Filter-wide selection includes both exam years and deduplicates secondary links.
+  await tab('행정법');await summary('#filters');await summary('.theme-options');
+  await page.locator('[data-ft="case"]').check();await page.locator('[data-ft="example"]').check();await hasCount(8);
+  await click('edit-notebook');await click('select-all');assert.equal(await page.locator('#selection-count').textContent(),'선택 8문항');
+  await make('two','bulk-print');const yearly=await saveAndInspect('theme-years');
+  assert.equal(await page.locator('#print-status').textContent(),'8문항 · 1쪽');
+  if(hasVector)assert.match(yearly[0].texts.map(t=>t[0]).join(' '),/Different exam year/);
+  await close();await click('bulk-master');await page.waitForFunction(()=>document.querySelector('.notebook-counts')?.textContent.includes('미숙지 0문항'));
+  await click('bulk-theme');await page.locator('#bulk-target').selectOption('example');await click('bulk-apply');await hasCount(8);
+  await detail('law#2');await click('unlink');await hasCount(7);
+  await detail('law#1');await click('goto-original');await page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>0);
+  await page.locator('[data-n="8"]').click();await click('save');
+  await page.waitForFunction(()=>document.querySelector('#notice')?.textContent.includes('오답을 저장'));
+  await nav('오답노트');await tab('행정법');await hasCount(9);
+  await detail('law#8');await click('remove-all');await click('confirm-remove');await hasCount(8);
+  await nav('자료실');await page.locator('[data-edit="older"]').click();await page.locator('#sub').selectOption('영어');await click('apply');
+  await nav('오답노트');await tab('영어');await hasCount(2);
+  await nav('자료실');await page.locator('[data-edit="older"]').click();await page.locator('#sub').selectOption('행정법');await click('apply');
+  await nav('오답노트');await tab('행정법');await hasCount(8);
+  await click('print');await click('make-proof');await click('stop-print');
+  await page.waitForFunction(()=>document.querySelector('#print-status')?.textContent.includes('취소'));await close();
+  await nav('자료실');await page.locator('[data-doc="admin"]').click();
+  await page.getByText('문항 영역 검수',{exact:true}).click();await summary('.shared-edit');await click('shared-drag');
+  const paper=page.locator('.paper');await paper.evaluate(el=>el.scrollIntoView({block:'start'}));
+  const [left,top]=await paper.evaluate(el=>{
+    const rect=el.getBoundingClientRect(),sheet=el.closest('.sheet').getBoundingClientRect(),header=document.querySelector('aside').getBoundingClientRect();
+    const x=Math.max(0,rect.left,sheet.left)+28,y=Math.max(0,rect.top,sheet.top,header.bottom)+42;
+    if(!el.contains(document.elementFromPoint(x,y)))throw Error('Drawing surface is outside the visible viewport.');
+    return [x,y];
+  });
+  await page.mouse.move(left,top);await page.mouse.down();await page.mouse.move(left+100,top+38,{steps:7});await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('#notice')?.textContent.includes('공통 지문을 연결'));
   const current=await readArchive();
+  const common=current.questions.filter(q=>q.doc==='admin').map(q=>q.regions.find(r=>r.shared));
+  assert.equal(common.length,2);assert.ok(common[0]);assert.deepEqual(common[0],common[1]);
   assert.deepEqual(current.questions.find(q=>q.id==='law#1').regions,archive.questions.find(q=>q.id==='law#1').regions);
   assert.deepEqual(current.events.filter(e=>e.q==='law#1').map(e=>e.id).sort(),['law-repeat#1','law-session#1']);
-  assert.deepEqual(current.questions.find(q=>q.id==='law#1').secondary,['example']);
+  assert.equal(current.questions.find(q=>q.id==='law#1').theme,'example');
+  assert.equal(current.questions.find(q=>q.id==='older#1').theme,'example');
   const fileHashes=await page.evaluate(async()=>{
     const db=await new Promise(res=>{const r=indexedDB.open('yu-study-archive',1);r.onsuccess=()=>res(r.result)});
     const store=db.transaction('files').objectStore('files');
