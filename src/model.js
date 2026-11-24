@@ -5,9 +5,9 @@ export function themes(seed){
  const seen=new Set(),rows=[];
  function id(node){if(!node||typeof node.id!=='string'||!node.id||seen.has(node.id)||typeof node.title!=='string')throw Error('목차 ID 또는 이름이 잘못되었습니다.');seen.add(node.id)}
  for(const book of seed.books){id(book);if(!subjects.includes(book.subject))throw Error('과목을 확인하세요.');
- function add(nodes,path,enabled=true){for(const t of nodes||[]){id(t);rows.push({...t,book:book.id,subject:book.subject,path:[book.title,...path].join(' › '),enabled:enabled&&t.classificationEnabled!==false})}}
+ function add(nodes,path,enabled=true,ancestry={}){for(const t of nodes||[]){id(t);rows.push({...t,book:book.id,subject:book.subject,...ancestry,path:[book.title,...path].join(' › '),enabled:enabled&&t.classificationEnabled!==false})}}
  add(book.themes,[]);add(book.referenceSections,['수시참고'],false);
- for(const part of book.parts||[]){id(part);for(const ch of part.chapters||[]){id(ch);add(ch.themes,[part.title,ch.title])}}
+ for(const part of book.parts||[]){id(part);for(const ch of part.chapters||[]){id(ch);add(ch.themes,[part.title,ch.title],true,{partId:part.id,partTitle:part.title,chapterId:ch.id,chapterTitle:ch.title})}}
  }return rows
 }
 export function record(s,doc,session,numbers){
@@ -34,4 +34,12 @@ export function validate(s){if(s?.version!==1)throw Error('지원하지 않는 �
  for(const x of s.questions){if(!doc(x.doc)||!Array.isArray(x.regions)||!Array.isArray(x.secondary)||[x.theme,...x.secondary].filter(Boolean).some(id=>!ts.some(t=>t.id===id)))throw Error('문항 연결 오류');
  for(const r of x.regions)if(!Number.isInteger(r.page)||r.page<1||![r.x,r.y,r.w,r.h].every(Number.isFinite)||r.x<0||r.y<0||r.w<=0||r.h<=0||r.x+r.w>1.00001||r.y+r.h>1.00001)throw Error('문항 좌표 오류')}
  for(const e of s.events)if(!q(e.q)||!s.sessions.some(a=>a.id===e.session&&a.doc===q(e.q).doc))throw Error('오답 연결 오류');
- for(const r of s.reviews)if(!q(r.q))throw Error('복습 연결 오류');return s}
+ for(const r of s.reviews)if(!q(r.q))throw Error('복습 연결 오류');
+ if(s.removedMistakes!==undefined){
+   if(!Array.isArray(s.removedMistakes))throw Error('오답 휴지통 형식 오류');
+   for(const batch of s.removedMistakes){
+     if(!batch.id||!Array.isArray(batch.events))throw Error('오답 휴지통 항목 오류');
+     for(const event of batch.events)if(!event.id||!q(event.q)||!s.sessions.some(a=>a.id===event.session&&a.doc===q(event.q).doc))throw Error('오답 휴지통 연결 오류');
+   }
+ }
+ return s}
