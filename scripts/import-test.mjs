@@ -28,6 +28,11 @@ const server=http.createServer((req,res)=>{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engine=process.env.YU_TEST_ENGINE||'chromium';
+const deadline=setTimeout(()=>{
+  console.error('Import regression exceeded 120 seconds.');
+  process.exit(1);
+},120000);
+deadline.unref();
 let browser;
 async function pdfFile(name,text,mimeType='application/pdf'){
   const doc=await PDFDocument.create();
@@ -79,6 +84,7 @@ try{
   },{archive,bytes:[...legacy.buffer],hash:legacyHash});
   await page.goto(origin+'/yu-study/');
   await page.getByRole('heading',{name:'학습 서재'}).waitFor();
+  console.log(engine+': legacy database opened');
   async function saved(){
     return page.evaluate(async()=>{
       const db=await new Promise((resolve,reject)=>{
@@ -121,6 +127,7 @@ try{
   await choose(english);
   await page.locator('#add').click();
   await registered(2);
+  console.log(engine+': native picker and empty MIME PDF imported');
   assert.equal(await page.locator('#subject').inputValue(),'전체 과목');
   assert.equal(await page.locator('#year').inputValue(),'전체 연도');
   assert.deepEqual((await saved()).questions,archive.questions);
@@ -131,6 +138,7 @@ try{
   assert.equal((await saved()).documents.length,2);
   await closeImport();
   assert.equal(await page.locator('#pdf-files').inputValue(),'');
+  console.log(engine+': duplicate rejected');
 
   await choose({name:'empty.pdf',mimeType:'application/pdf',buffer:Buffer.alloc(0)});
   await page.locator('#add').click();
@@ -142,6 +150,7 @@ try{
   await page.getByRole('alert').filter({hasText:'PDF 형식'}).waitFor();
   await page.locator('#skip').click();
   await page.getByRole('heading',{name:'PDF 가져오기 · 2 / 2'}).waitFor();
+  console.log(engine+': invalid and empty files handled');
 
   await page.evaluate(()=>{
     const original=FileReader.prototype.readAsArrayBuffer;
@@ -168,6 +177,7 @@ try{
   assert.equal((await saved()).documents.length,2);
   await page.locator('#add').click();
   await registered(3);
+  console.log(engine+': read and quota failures recovered');
 
   await page.reload();
   await page.getByRole('button',{name:'자료실',exact:true}).click();
@@ -184,6 +194,7 @@ try{
   await page.locator('[data-doc="'+imported.id+'"]').click();
   await page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>0);
   await page.waitForFunction(()=>document.querySelector('#reginfo')?.textContent.includes('영역 1개'));
+  console.log(engine+': PDF rendered after reload');
 
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByText('기기 저장 · v0.2.0').waitFor();
@@ -195,10 +206,12 @@ try{
   assert.equal(await chooser.element().evaluate(el=>el.isConnected),true);
   await chooser.setFiles({name:'fictional.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:1,books:[{id:'fake',subject:'국어',title:'가상 교재',themes:[{id:'fake-theme',title:'가상 테마'}]}]}))});
   await page.getByText('국어 · 가상 교재',{exact:true}).waitFor();
+  console.log(engine+': JSON chooser consumed');
   assert.deepEqual(external,[]);
   assert.deepEqual(errors,[]);
   console.log('PASS '+engine+': touch file selection, legacy data, empty MIME, filter reset, duplicates, empty/invalid PDF, multi-file skip, provider read failure, quota rollback and retry, reload, PDF render and attached JSON chooser. No external requests.');
 }finally{
+  clearTimeout(deadline);
   await browser?.close();
   server.close();
 }
