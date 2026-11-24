@@ -1,0 +1,33 @@
+import {mkdir,readFile,writeFile,cp,readdir,rm} from 'node:fs/promises';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const dist=path.join(root,'dist');
+export async function buildApp(portable=true){
+  if(portable) await rm(dist,{recursive:true,force:true});
+  await mkdir(dist,{recursive:true});
+  const copy=(from,to)=>cp(from,path.join(dist,to),{recursive:true});
+  for(const name of ['icon-192.png','icon-512.png','apple-touch-icon.png','manifest.webmanifest']) await copy(path.join(root,'public',name),name);
+  if(portable){
+    await copy(path.join(root,'src'),'src');
+    await copy(path.join(root,'index.html'),'index.html');
+  }
+  const mods=process.env.YU_DEPENDENCIES||path.join(root,'node_modules');
+  for(const name of ['pdf.min.mjs','pdf.worker.min.mjs']) await copy(path.join(mods,'pdfjs-dist/legacy/build',name),'vendor/'+name);
+  for(const name of ['cmaps','standard_fonts','wasm']) await copy(path.join(mods,'pdfjs-dist',name),'vendor/'+name);
+  await copy(path.join(mods,'jszip/dist/jszip.min.js'),'vendor/jszip.min.js');
+  await copy(path.join(mods,'jszip/LICENSE.markdown'),'vendor/jszip-LICENSE.txt');
+  await copy(path.join(mods,'pdfjs-dist/LICENSE'),'vendor/pdfjs-LICENSE.txt');
+  async function list(dir){let out=[];for(const e of await readdir(dir,{withFileTypes:true})){const f=path.join(dir,e.name);out.push(...(e.isDirectory()?await list(f):[path.relative(dist,f).split(path.sep).join('/')]));}return out;}
+  const files=(await list(dist)).filter(x=>x!=='sw.js').sort();
+  const hash=createHash('sha256');
+  for(const f of files)hash.update(f).update(await readFile(path.join(dist,f)));
+  const cache='yu-study-shell-'+hash.digest('hex').slice(0,16);
+  await writeFile(path.join(dist,'sw.js'),`const cache=${JSON.stringify(cache)}, files=${JSON.stringify(files)}.map(p=>new URL(p,self.registration.scope).href);
+self.addEventListener('install',e=>e.waitUntil(caches.open(cache).then(c=>c.addAll(files))));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(names=>Promise.all(names.filter(n=>n.startsWith('yu-study-shell-')&&n!==cache).map(n=>caches.delete(n)))).then(()=>self.clients.claim())));
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||!e.request.url.startsWith(self.registration.scope))return;const url=e.request.mode==='navigate'?new URL('index.html',self.registration.scope).href:e.request.url;if(files.includes(url))e.respondWith(caches.open(cache).then(c=>c.match(url)).then(r=>r||fetch(e.request)));});`);
+  console.log('Built',files.length,'static resources:',cache);
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))await buildApp();

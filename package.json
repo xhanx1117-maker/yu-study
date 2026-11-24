@@ -1,0 +1,18 @@
+{
+  "name": "yu-study",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "vite build",
+    "test": "node --test tests/*.mjs",
+    "build:portable": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "pdfjs-dist": "5.6.205",
+    "jszip": "3.10.1"
+  },
+  "devDependencies": {
+    "vite": "7.2.2"
+  }
+}
