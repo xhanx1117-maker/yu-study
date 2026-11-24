@@ -1,4 +1,4 @@
-import {mkdir,readFile,writeFile,cp,readdir,rm} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,cp,readdir,rm,access} from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -14,6 +14,15 @@ export async function buildApp(portable=true){
     await copy(path.join(root,'index.html'),'index.html');
   }
   const mods=process.env.YU_DEPENDENCIES||path.join(root,'node_modules');
+  const pdfium=path.join(mods,'@embedpdf/pdfium');
+  const available=await access(path.join(pdfium,'dist/pdfium.wasm')).then(()=>true,()=>false);
+  if(available){
+    await copy(path.join(pdfium,'dist/index.browser.js'),'vendor/pdfium.js');
+    await copy(path.join(pdfium,'dist/pdfium.wasm'),'vendor/pdfium.wasm');
+    await copy(path.join(pdfium,'LICENSE'),'vendor/pdfium-wrapper-LICENSE.txt');
+    await copy(path.join(root,'licenses/pdfium.txt'),'vendor/pdfium-LICENSE.txt');
+  }else if(!portable || !process.env.YU_DEPENDENCIES)throw Error('Install @embedpdf/pdfium before building.');
+  else console.log('Portable preview uses lossless crop rendering.');
   for(const name of ['pdf.min.mjs','pdf.worker.min.mjs']) await copy(path.join(mods,'pdfjs-dist/legacy/build',name),'vendor/'+name);
   for(const name of ['cmaps','standard_fonts','wasm']) await copy(path.join(mods,'pdfjs-dist',name),'vendor/'+name);
   await copy(path.join(mods,'jszip/dist/jszip.min.js'),'vendor/jszip.min.js');
