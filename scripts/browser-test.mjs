@@ -19,5 +19,14 @@ await p.evaluate(()=>navigator.serviceWorker.ready);await p.waitForFunction(()=>
 await p.evaluate(async()=>{const reg=await navigator.serviceWorker.ready;await reg.update();const worker=reg.installing;if(worker&&worker.state!=='installed')await new Promise((resolve,reject)=>worker.addEventListener('statechange',()=>{if(worker.state==='installed')resolve();if(worker.state==='redundant')reject(Error('Update installation failed'))}));});
 const address=p.url();await p.goto('about:blank');await p.goto(address);
 await p.waitForFunction(async()=>(await caches.keys()).some(k=>k.startsWith('yu-study-shell-upgrade-'))&&!(await caches.keys()).some(k=>/^yu-study-shell-[a-f0-9]/.test(k)));
-await context.setOffline(true);await p.reload();await p.getByRole('heading',{name:'학습 서재'}).waitFor();await p.getByRole('button',{name:'오답노트',exact:true}).click();await p.locator('.crops canvas').waitFor();assert.deepEqual(pageErrors,[]);console.log('PASS: import, auto crop, session, notebook rendering, A4 PDF file, full backup and restore, app update, offline reload and PDF rendering.');
-}finally{await browser?.close();server.close();clearTimeout(deadline)}})().catch(e=>{console.error(e);process.exitCode=1});
+// Cache cleanup precedes clients.claim(); wait for the new worker to control the page.
+await p.waitForFunction(()=>navigator.serviceWorker.controller?.state==='activated');
+// WebKit's offline emulation rejects even literal service-worker responses
+// (microsoft/playwright#42775). Stop the origin for both engines instead;
+// Chromium also exercises the browser's offline flag.
+const closed=new Promise(resolve=>server.close(resolve));server.closeAllConnections();await closed;
+await assert.rejects(fetch(address));
+if(engine===chromium)await context.setOffline(true);
+const offlineResponse=await p.reload();assert.equal(offlineResponse.fromServiceWorker(),true);
+await p.getByRole('heading',{name:'학습 서재'}).waitFor();await p.getByRole('button',{name:'오답노트',exact:true}).click();await p.locator('.crops canvas').waitFor();assert.deepEqual(pageErrors,[]);console.log('PASS: import, auto crop, session, notebook rendering, A4 PDF file, full backup and restore, app update, origin stopped, service-worker reload and PDF rendering.');
+}finally{await browser?.close();if(server.listening)server.close();clearTimeout(deadline)}})().catch(e=>{console.error(e);process.exitCode=1});
