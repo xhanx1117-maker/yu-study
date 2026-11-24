@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,14 +19,15 @@ jobs:
       - run: npm install --ignore-scripts
       - run: npm test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
       - run: node scripts/browser-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
