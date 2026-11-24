@@ -12,6 +12,7 @@ export function importError(error){
     return '선택한 파일을 읽지 못했습니다. 파일 앱에서 PDF를 먼저 열어 다운로드를 완료하거나 ‘나의 iPad’에 복사한 뒤 다시 선택하세요.';
   }
   if(error.name==='AbortError')return '파일 읽기를 취소했습니다. 다시 시도하거나 다른 파일을 선택하세요.';
+  if(error.name==='UnknownError')return '브라우저 저장소에 PDF를 저장하지 못했습니다. 비공개 탐색 중이라면 Safari 일반 탭이나 홈 화면 앱에서 다시 열어 주세요. 일반 모드에서도 계속되면 앱을 종료 후 다시 실행하세요. 사이트 데이터는 삭제하지 마세요.';
   return error.message||'등록하지 못했습니다. 파일을 다시 선택해 주세요.';
 }
 

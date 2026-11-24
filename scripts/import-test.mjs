@@ -41,14 +41,15 @@ async function pdfFile(name,text,mimeType='application/pdf'){
   return {name,mimeType,buffer:Buffer.from(await doc.save())};
 }
 try{
-  browser=await (engine==='webkit'?webkit:chromium).launch({
+  // WebKit private sessions do not support Blob/File values in IndexedDB.
+  // Use a fresh temporary persistent profile, like a normal Safari/PWA session.
+  const context=await (engine==='webkit'?webkit:chromium).launchPersistentContext('',{
     headless:true,
     ...(engine==='chromium'?{executablePath:process.env.YU_BROWSER}:{}),
-  });
-  const context=await browser.newContext({
     viewport:{width:834,height:1194},isMobile:true,hasTouch:true,
     userAgent:'Mozilla/5.0 (iPad; CPU OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
   });
+  browser=context;
   const page=await context.newPage();
   page.setDefaultTimeout(20000);
   const errors=[],external=[];
@@ -68,6 +69,7 @@ try{
   archive.questions.push({id:'legacy#1',doc:'legacy',number:1,regions:[{page:1,x:0,y:0,w:1,h:.4}],theme:null,secondary:[],status:'부분 이해',memo:'기존 메모'});
   archive.events.push({id:'old-session#1',q:'legacy#1',session:'old-session',number:1,date:'2023-01-01'});
   await page.goto(origin+'/seed.html');
+  console.log(engine+': seeding existing version 1 data');
   await page.evaluate(async({archive,bytes,hash})=>{
     const db=await new Promise((resolve,reject)=>{
       const req=indexedDB.open('yu-study-archive',1);
@@ -211,7 +213,7 @@ try{
   assert.deepEqual(errors,[]);
   console.log('PASS '+engine+': touch file selection, legacy data, empty MIME, filter reset, duplicates, empty/invalid PDF, multi-file skip, provider read failure, quota rollback and retry, reload, PDF render and attached JSON chooser. No external requests.');
 }finally{
-  clearTimeout(deadline);
   await browser?.close();
   server.close();
+  clearTimeout(deadline);
 }
