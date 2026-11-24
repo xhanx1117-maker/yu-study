@@ -3,9 +3,18 @@ let engine;
 export async function openPdf(blob){engine??=await import(/* @vite-ignore */ new URL('pdf.min.mjs',base).href);engine.GlobalWorkerOptions.workerSrc=new URL('pdf.worker.min.mjs',base).href;
 return engine.getDocument({data:new Uint8Array(await blob.arrayBuffer()),cMapUrl:new URL('cmaps/',base).href,cMapPacked:true,standardFontDataUrl:new URL('standard_fonts/',base).href,wasmUrl:new URL('wasm/',base).href,useWorkerFetch:true,isEvalSupported:false}).promise}
 export async function paint(pdf,page,canvas,width=1100,region=null){const p=await pdf.getPage(page),v=p.getViewport({scale:1}),scale=Math.min(3,width/v.width),vp=p.getViewport({scale}),r=region||{x:0,y:0,w:1,h:1};canvas.width=Math.max(1,Math.ceil(vp.width*r.w));canvas.height=Math.max(1,Math.ceil(vp.height*r.h));await p.render({canvasContext:canvas.getContext('2d'),viewport:vp,transform:[1,0,0,1,-vp.width*r.x,-vp.height*r.y]}).promise}
+async function textContent(page){
+ // Some Safari versions support stream readers but not async stream iteration.
+ // PDF.js getTextContent uses for-await even in its legacy build.
+ if(typeof ReadableStream.prototype[Symbol.asyncIterator]==='function')return page.getTextContent();
+ const reader=page.streamTextContent().getReader(),content={items:[],styles:Object.create(null),lang:null};
+ try{while(true){const {value,done}=await reader.read();if(done)break;content.lang??=value.lang;Object.assign(content.styles,value.styles);content.items.push(...value.items)}}
+ finally{reader.releaseLock()}
+ return content;
+}
 export async function detect(pdf,count){
  const markers=[],texts=[],columns=[],passages=[];let last=0;
- for(let page=1;page<=pdf.numPages;page++){const p=await pdf.getPage(page),v=p.getViewport({scale:1}),tc=await p.getTextContent();const lines=[];
+ for(let page=1;page<=pdf.numPages;page++){const p=await pdf.getPage(page),v=p.getViewport({scale:1}),tc=await textContent(p);const lines=[];
  for(const item of tc.items){if(!item.str?.trim())continue;const [x,y]=v.convertToViewportPoint(item.transform[4],item.transform[5]+item.height*.85);lines.push({x:x/v.width,y:y/v.height,str:item.str})}
  const match=t=>/^\s*(?:문\s*제?\s*(\d{1,3})(?:[.)]|\s|$)|(\d{1,3})[.)](?:\s|$|(?=[가-힣])))/.exec(t);
  const candidates=lines.filter(a=>match(a.str)&&a.y>.025&&a.y<.97);

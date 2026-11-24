@@ -194,12 +194,18 @@ try{
   const expectedHash=createHash('sha256').update(english.buffer).digest('hex');
   assert.equal(imported.hash,expectedHash);
   assert.equal(imported.filename,'2026 영어.pdf');
+  // Exercise the Safari stream-reader fallback on Chromium as well.
+  await page.evaluate(()=>{delete ReadableStream.prototype[Symbol.asyncIterator]});
   await page.locator('[data-doc="'+imported.id+'"]').click();
   try{
     await page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>0);
     await page.waitForFunction(()=>document.querySelector('#reginfo')?.textContent.includes('영역 1개'));
   }catch(error){console.error(await page.locator('body').innerText());throw error}
   console.log(engine+': PDF rendered after reload');
+  await page.getByRole('button',{name:'자료실',exact:true}).click();
+  await page.locator('[data-doc="legacy"]').click();
+  await page.waitForFunction(()=>document.querySelector('#reginfo')?.textContent.includes('영역 1개'));
+  console.log(engine+': original File PDF still readable');
 
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByText('기기 저장 · v0.2.0').waitFor();
