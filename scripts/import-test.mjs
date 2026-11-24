@@ -110,6 +110,7 @@ try{
   async function registered(count){
     await page.locator('#modal').waitFor({state:'hidden'});
     await page.getByRole('heading',{name:'자료실',exact:true}).waitFor();
+    await page.waitForFunction(expected=>document.querySelectorAll('[data-doc]').length===expected,count);
     assert.equal(await page.locator('[data-doc]').count(),count);
   }
 
