@@ -6,6 +6,7 @@ import {printSettings,layouts} from './workbook-layout.js';
 import {prepareWorkbook,renderArea} from './workbook-source.js';
 import {writeWorkbook} from './export.js';
 import {openPdf} from './pdf.js';
+import {regionRecord} from './region-records.js';
 
 const toggles={divider:'중앙 구분선',source:'원본 시험 출처',number:'원래 문항 번호',serial:'연속 번호',theme:'교재 테마',bookPage:'교재 페이지',
   sections:'테마별로 묶고 제목 표시',count:'누적 오답 횟수',memo:'개인 메모',answers:'연결된 정답·해설을 부록에 포함'};
@@ -15,7 +16,11 @@ function select(id,values,current){
 
 export function openPrint(archive,rows,filters,{readFile,saveSettings=true}={}){
   if(!rows.length)return notice('출력할 문항이 없습니다.');
-  const opts=printSettings(archive.printSettings),missing=rows.filter(r=>!r.question.regions.length);
+  const opts=printSettings(archive.printSettings),targets=[],missing=[];
+  for(const row of rows){
+    const regions=regionRecord(row.doc,row.question).regions;
+    (regions?.length?targets:missing).push(row);
+  }
   const subjects=[...new Set(rows.map(r=>r.doc.subject).filter(Boolean))];
   const themes=rows.flatMap(r=>r.linked),theme=filters.themeIds?.length===1 && themes.find(t=>t.id===filters.themeIds[0]);
   const group=theme?[theme.number,theme.title].filter(Boolean).join(' '):
@@ -65,7 +70,6 @@ export function openPrint(archive,rows,filters,{readFile,saveSettings=true}={}){
     const fields=['scale','margin','gap'];
     if(fields.some(k=>!$('#print-'+k).reportValidity()||!$('#print-'+k).value))return;
     if(missing.length&&!$('#skip-missing').checked){$('#print-status').textContent='미지정 문항을 제외하거나 원본에서 영역을 지정하세요.';return}
-    const targets=rows.filter(r=>r.question.regions.length);
     if(!targets.length){$('#print-status').textContent='출력 가능한 문항 영역이 없습니다.';return}
     const selected={settingsVersion:2,mode:$('#print-mode').value,order:$('#print-order').value};
     for(const key of fields)selected[key]=Number($('#print-'+key).value);

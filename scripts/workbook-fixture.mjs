@@ -57,6 +57,8 @@ export async function fixture(koreanPng){
   text('EXCLUDED-FOOTER',29,797,9);
   const bytes=await exam.save(),law=meta('law','연습 A','행정법','2025',addFile(bytes),8);
   structure(s,law,regions,[1,2,3,4,5,6,7],'case');
+  // One older archive kept the reviewed rectangle only on its document.
+  s.questions.find(q=>q.id==='law#5').regions=[];
   s.questions.find(q=>q.id==='law#1').secondary=['example'];
   const repeat='law-repeat';s.sessions.push({id:repeat,doc:law.id,date:'2025-05-05'});
   record(s,law,repeat,[1]);s.events.find(e=>e.session===repeat).date='2025-05-05';

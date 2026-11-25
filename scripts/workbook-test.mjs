@@ -216,6 +216,9 @@ try{
   assert.ok(Math.abs(y2-y1-rotatedLength)<=4&&x2-x1<=10,'rotated crop follows the sheet fit and UserUnit 1.25');
   await tab('행정법');await summary('#filters');await page.locator('#f-year').selectOption('2025');await hasCount(7);
   await make('original');const original=await saveAndInspect('original');assert.equal(original.length,1);assert.ok(original[0].outside>100);await close();
+  const preserved=await readArchive();
+  assert.deepEqual(preserved.questions.find(q=>q.id==='law#5').regions,[]);
+  assert.equal(preserved.documents.find(d=>d.id==='law').detected[5].reviewed,true);
   await click('edit-notebook');await page.locator('[data-pick="law#1"]').check();await page.locator('[data-pick="law#3"]').check();
   await make('individual','bulk-print');const singles=await saveAndInspect('individual');assert.equal(singles.length,2);
   assert.ok(singles.every(s=>s.strips.length===1));await close();

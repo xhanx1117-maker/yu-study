@@ -98,8 +98,9 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
   const options=printSettings(input),seen=new Set(),originalPages=new Map(),partsByDoc=new Map();
   const docs=new Map(archive.documents.map(d=>[d.id,d]));
   let unique=rows.filter(row=>!seen.has(row.id)&&seen.add(row.id));
+  const repaired=new Map();
   if(options.mode!=='original'){
-    const repaired=new Map(),groups=new Map();
+    const groups=new Map();
     for(const row of unique){
       if(!groups.has(row.doc.id))groups.set(row.doc.id,[]);
       groups.get(row.doc.id).push(row);
@@ -116,12 +117,12 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
       }
       repaired.set(doc.id,repairedSources.get(key));
     }
-    unique=unique.map(row=>{
-      const previous=regionRecord(row.doc,row.question),next=repaired.get(row.doc.id)?.[row.question.number];
-      const crop=needsRepair(previous)&&next?.regions.length?next:previous;
-      return {...row,question:{...row.question,regions:crop.regions||[],reviewed:crop.reviewed,regionVersion:crop.regionVersion,text:crop.text}};
-    });
   }
+  unique=unique.map(row=>{
+    const previous=regionRecord(row.doc,row.question),next=repaired.get(row.doc.id)?.[row.question.number];
+    const crop=needsRepair(previous)&&next?.regions.length?next:previous;
+    return {...row,question:{...row.question,regions:crop.regions||[],reviewed:crop.reviewed,regionVersion:crop.regionVersion,text:crop.text}};
+  });
   if(options.order!=='current')unique=sortRows(unique,options.order);
   const themeFor=row=>row.linked.find(t=>filters.themeIds?.includes(t.id))||row.linked[0];
   if(options.sections)unique=[...unique].sort((a,b)=>{
