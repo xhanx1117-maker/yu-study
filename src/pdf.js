@@ -97,6 +97,7 @@ export async function detect(pdf,count,{signal,progress=()=>{}}={}){
       const two=info.candidates.some(right)&&(twoInBook||info.candidates.some(left)) || twoInBook&&!wideText;
       const first=Math.min(1,...info.candidates.filter(l=>l.n>previous).map(l=>l.y));
       const frame=pageFrame(bitmap,two,first,Math.min(edge[index][0],first),edge[index][1]);
+      const padding=Math.ceil(4.5*scale);
       for(const [col,lane] of frame.lanes.entries()){
         const inLane=l=>l.x*bitmap.width>=lane[0]-2 && l.x*bitmap.width<lane[1];
         const candidates=info.candidates.filter(l=>inLane(l)&&(col?right(l):left(l)));
@@ -110,13 +111,13 @@ export async function detect(pdf,count,{signal,progress=()=>{}}={}){
         for(const entry of entries.sort((a,b)=>a.y-b.y||a.x-b.x)){
           if(entry.kind==='number'&&entry.n<=previous || entry.base*bitmap.height<frame.top || entry.y*bitmap.height>=frame.bottom)continue;
           const cut=Math.max(start,beforeLine(bitmap,frame,col,entry));
-          append(tightBand(bitmap,frame,col,start,cut,index+1),info.lines);
+          append(tightBand(bitmap,frame,col,start,cut,index+1,padding),info.lines);
           start=cut;
           if(entry.kind==='number'){
             previous=entry.n;active={regions:[],text:[],reviewed:false,regionVersion};out[entry.n]=active;
           }else{active={regions:[],text:[],from:entry.from,to:entry.to};passages.push(active)}
         }
-        append(tightBand(bitmap,frame,col,start,frame.bottom,index+1),info.lines);
+        append(tightBand(bitmap,frame,col,start,frame.bottom,index+1,padding),info.lines);
       }
     }finally{signal?.removeEventListener('abort',abort);canvas.width=canvas.height=1;page.cleanup()}
   }

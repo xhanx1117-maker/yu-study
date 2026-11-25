@@ -2,7 +2,11 @@ import {get} from './db.js';
 import {openPdf,detect} from './pdf.js';
 import {needsRepair,regionRecord} from './region-records.js';
 import {sortRows} from './notebook-model.js';
-import {planWorkbook,printSettings} from './workbook-layout.js';
+import {A4,MM,planWorkbook,printSettings} from './workbook-layout.js';
+import {regionVersion} from './exam-regions.js';
+
+// Cache only compact coordinates/text keyed by the immutable source, never PDF pages or bitmaps.
+const repairedSources=new Map();
 
 export async function renderArea(page, region, scale, signal, maxPixels=7500000){
   signal.throwIfAborted();
@@ -45,7 +49,7 @@ function measureArea(part,page,pixels){
     }
     // Trim just vacant outer margins of machine-detected regions; retain a safety
     // border. A manually specified rectangle always retains its exact dimensions.
-    if(part.trim&&maxX>=minX&&maxY>=minY){
+    if(part.trim&&!part.measured&&maxX>=minX&&maxY>=minY){
       const nx=Math.max(x,(minX-4)/width*view.width),ny=Math.max(y,(minY-4)/height*view.height);
       w=Math.min(x+w,(maxX+5)/width*view.width)-nx;h=Math.min(y+h,(maxY+5)/height*view.height)-ny;
       x=nx;y=ny;
@@ -103,13 +107,18 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
       const doc=group[0].doc;
       if(!group.some(row=>needsRepair(regionRecord(doc,row.question))))continue;
       signal.throwIfAborted();
-      const pdf=await openPdf(await readFile(doc.hash));
-      try{repaired.set(doc.id,await detect(pdf,doc.count,{signal,progress}))}finally{await pdf.destroy()}
+      const key=doc.hash+'#'+doc.count;
+      if(!repairedSources.has(key)){
+        const pdf=await openPdf(await readFile(doc.hash));
+        try{repairedSources.set(key,await detect(pdf,doc.count,{signal,progress}))}finally{await pdf.destroy()}
+        if(repairedSources.size>2)repairedSources.delete(repairedSources.keys().next().value);
+      }
+      repaired.set(doc.id,repairedSources.get(key));
     }
     unique=unique.map(row=>{
       const previous=regionRecord(row.doc,row.question),next=repaired.get(row.doc.id)?.[row.question.number];
       const crop=needsRepair(previous)&&next?.regions.length?next:previous;
-      return {...row,question:{...row.question,regions:crop.regions||[],reviewed:crop.reviewed,text:crop.text}};
+      return {...row,question:{...row.question,regions:crop.regions||[],reviewed:crop.reviewed,regionVersion:crop.regionVersion,text:crop.text}};
     });
   }
   if(options.order!=='current')unique=sortRows(unique,options.order);
@@ -180,7 +189,7 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
           shared.add(key);
         }
         const trim=q.reviewed===false;
-        for(const area of trim&&!isPassage(r)?withoutPassages(r,passagesByDoc.get(doc.id)||[]):[r])parts.push(register(doc,area,{trim}));
+        for(const area of trim&&!isPassage(r)?withoutPassages(r,passagesByDoc.get(doc.id)||[]):[r])parts.push(register(doc,area,{trim,measured:trim&&q.regionVersion===regionVersion}));
       }
       items.push({id:q.id,labels,parts});
     }
@@ -206,7 +215,10 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
         signal.throwIfAborted();progress('원본 영역 확인',++done,total);
         if(n>pdf.numPages)throw Error(docs.get(docId).title+'의 '+n+'쪽을 확인하세요.');
         const page=await pdf.getPage(n);let pixels;
-        if(parts.some(p=>!p.wholePage)){
+        const view=page.getViewport({scale:1});
+        const sheetScale=Math.min(1,A4.width/view.width,A4.height/view.height)*options.scale/100;
+        const printHeight=A4.height-2*options.margin*MM-25;
+        if(parts.some(p=>!p.wholePage&&(!p.measured||p.region.h*view.height*sheetScale>printHeight))){
           const canvas=await renderArea(page,fullPage,1.35,signal,1200000);
           try{pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height)}finally{canvas.width=canvas.height=1}
         }
