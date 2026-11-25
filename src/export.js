@@ -79,7 +79,7 @@ async function compactResources(output,lib,signal){
   }
   for(const [ref] of objects)if(!retained.has(ref))ctx.delete(ref);
 }
-export async function writeWorkbook(prepared, title, signal, progress){
+export async function writeWorkbook(prepared, title, signal, progress,readFile=key=>get('files',key)){
   const {plan,options}=prepared,lib=await loadLibrary(),output=await lib.PDFDocument.create();
   const vector=vectorCrops(signal),plain=await output.embedFont(lib.StandardFonts.Helvetica);
   output.setTitle(title);output.setCreator('Yu: study');output.setProducer('Yu: study');
@@ -105,7 +105,7 @@ export async function writeWorkbook(prepared, title, signal, progress){
         const p=item.part;
         progress('PDF 구성',++finished,total);
         if(key!==p.hash){
-          await source?.destroy();originalPdf=null;key=p.hash;blob=await get('files',key);
+          await source?.destroy();originalPdf=null;key=p.hash;blob=await readFile(key);
           if(!blob)throw Error('원본 PDF를 찾을 수 없습니다.');
           source=await openPdf(blob);
         }

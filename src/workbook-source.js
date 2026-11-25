@@ -89,7 +89,7 @@ function withoutPassages(region,passages){
   }
   return strips;
 }
-export async function prepareWorkbook(archive,rows,filters,input,signal,progress){
+export async function prepareWorkbook(archive,rows,filters,input,signal,progress,readFile=key=>get('files',key)){
   const options=printSettings(input),seen=new Set(),originalPages=new Map(),partsByDoc=new Map();
   const docs=new Map(archive.documents.map(d=>[d.id,d]));
   let unique=rows.filter(row=>!seen.has(row.id)&&seen.add(row.id));
@@ -103,7 +103,7 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
       const doc=group[0].doc;
       if(!group.some(row=>needsRepair(regionRecord(doc,row.question))))continue;
       signal.throwIfAborted();
-      const pdf=await openPdf(await get('files',doc.hash));
+      const pdf=await openPdf(await readFile(doc.hash));
       try{repaired.set(doc.id,await detect(pdf,doc.count,{signal,progress}))}finally{await pdf.destroy()}
     }
     unique=unique.map(row=>{
@@ -200,7 +200,7 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
   const total=[...partsByDoc.values()].reduce((n,p)=>n+p.size,0);let done=0;
   for(const [docId,pages] of partsByDoc){
     signal.throwIfAborted();
-    const pdf=await openPdf(await get('files',docs.get(docId).hash));
+    const pdf=await openPdf(await readFile(docs.get(docId).hash));
     try{
       for(const [n,parts] of pages){
         signal.throwIfAborted();progress('원본 영역 확인',++done,total);

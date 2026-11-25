@@ -13,7 +13,7 @@ function select(id,values,current){
   return '<select id="'+id+'">'+Object.entries(values).map(([key,name])=>'<option value="'+key+'" '+(key===current?'selected':'')+'>'+name+'</option>').join('')+'</select>';
 }
 
-export function openPrint(archive,rows,filters){
+export function openPrint(archive,rows,filters,{readFile,saveSettings=true}={}){
   if(!rows.length)return notice('출력할 문항이 없습니다.');
   const opts=printSettings(archive.printSettings),missing=rows.filter(r=>!r.question.regions.length);
   const subjects=[...new Set(rows.map(r=>r.doc.subject).filter(Boolean))];
@@ -63,13 +63,13 @@ export function openPrint(archive,rows,filters){
     if(missing.length&&!$('#skip-missing').checked){$('#print-status').textContent='미지정 문항을 제외하거나 원본에서 영역을 지정하세요.';return}
     const targets=rows.filter(r=>r.question.regions.length);
     if(!targets.length){$('#print-status').textContent='출력 가능한 문항 영역이 없습니다.';return}
-    const selected={mode:$('#print-mode').value,order:$('#print-order').value};
+    const selected={settingsVersion:2,mode:$('#print-mode').value,order:$('#print-order').value};
     for(const key of fields)selected[key]=Number($('#print-'+key).value);
     section.querySelectorAll('[data-option]').forEach(el=>{selected[el.dataset.option]=el.checked});
     const token=++revision;controller=new AbortController();const signal=controller.signal;busy(true);
     try{
-      const book=await prepareWorkbook(archive,targets,filters,selected,signal,progress);
-      const {file}=await writeWorkbook(book,title,signal,progress);signal.throwIfAborted();
+      const book=await prepareWorkbook(archive,targets,filters,selected,signal,progress,readFile);
+      const {file}=await writeWorkbook(book,title,signal,progress,readFile);signal.throwIfAborted();
       proof=await openPdf(file);if(signal.aborted){discard();return}
       readyFile=file;url=URL.createObjectURL(file);index=1;
       $('#proof-result').innerHTML='<div class="row"><button id="proof-prev">이전 쪽</button><span id="proof-page"></span><button id="proof-next">다음 쪽</button></div>'+
@@ -77,7 +77,8 @@ export function openPrint(archive,rows,filters){
       $('#pdfpreview').href=url;on('pdfsave',()=>download(file,file.name));on('pdfshare',async()=>{if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file]});else download(file,file.name)});
       on('proof-prev',()=>{index=Math.max(1,index-1);return display()});on('proof-next',()=>{index=Math.min(proof.numPages,index+1);return display()});
       await display();signal.throwIfAborted();
-      await change(s=>{s.printSettings=selected});archive.printSettings=selected;markModalSaved();
+      if(saveSettings){await change(s=>{s.printSettings=selected});archive.printSettings=selected}
+      markModalSaved();
       if(token===revision)$('#print-status').textContent=book.questionCount+'문항 · '+book.plan.pages.length+'쪽';
     }catch(error){if(token===revision){discard();$('#print-status').textContent=signal.aborted?'출력을 취소했습니다.':error.message}}
     finally{if(token===revision)busy(false)}

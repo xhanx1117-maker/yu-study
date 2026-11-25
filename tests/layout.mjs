@@ -49,3 +49,10 @@ test('a B4 text column is normalized once per sheet and flows in reading order',
   assert.ok(placed[2].x<A4.width/2 && placed[3].x>A4.width/2);
   assert.deepEqual(plan.pages[0].dividers,[{start:plan.top,end:plan.bottom}]);
 });
+
+test('only untouched legacy automatic settings move to the two-column preset',()=>{
+  const old={...printSettings(),mode:'auto',margin:8,gap:4};
+  assert.equal(printSettings(old).mode,'two');
+  assert.equal(printSettings({...old,gap:6}).mode,'auto');
+  assert.equal(printSettings({...old,settingsVersion:2}).mode,'auto');
+});

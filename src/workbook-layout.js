@@ -15,6 +15,12 @@ export function printSettings(input={}) {
     const value=Number(input?.[key]);
     if(Number.isFinite(value)&&value>=min&&value<=max)result[key]=value;
   }
+  // v0.3 stored the untouched defaults after every preview. Only that exact
+  // combination changes to the new default; retain every customized preference.
+  if(input?.mode==='auto' && input.settingsVersion===undefined && input.scale===100 && input.margin===8 && input.gap===4 &&
+      Object.keys(defaults).filter(k=>!['mode','scale','margin','gap'].includes(k)).every(k=>input[k]===defaults[k])){
+    result.mode=defaults.mode;result.margin=defaults.margin;result.gap=defaults.gap;
+  }
   return result;
 }
 
