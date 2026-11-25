@@ -1,7 +1,8 @@
 import {change,get} from './db.js';
 import {openPdf,paint} from './pdf.js';
 import {assignTheme,setStatus,statuses,removeEvents,restoreEvents} from './notebook-model.js';
-import {$,esc,modal,on,notice,guard} from './ui.js';
+import {$,esc,modal,on,notice,guard,mayLeaveModal} from './ui.js';
+import {compareRegions} from './region-ui.js';
 
 export function selectOptions(entries, selected='', placeholder='전체'){
   return '<option value="">'+esc(placeholder)+'</option>'+entries.map(([key,label])=>
@@ -12,7 +13,7 @@ const close=()=>$('#modal').close();
 
 export function confirmRemoval(events, refresh){
   const affected=new Set(events.map(e=>e.q)).size;
-  modal('<h2>오답 기록 제거</h2><p>문항 <b>'+affected+'개</b>의 오답 이력 <b>'+events.length+'회</b>를 휴지통으로 옮깁니다. 원본 PDF와 문항 영역은 보관됩니다.</p><div class="row"><button id="confirm-remove" class="danger">휴지통으로 이동</button><button id="cancel-remove">취소</button></div>');
+  modal('<h2>오답 기록 제거</h2><p>문항 <b>'+affected+'개</b>의 오답 이력 <b>'+events.length+'회</b>를 휴지통으로 옮깁니다. 원본 PDF와 문항 영역은 보관됩니다.</p><div class="row"><button id="confirm-remove" class="danger">휴지통으로 이동</button><button id="cancel-remove">취소</button></div>',{critical:true});
   on('cancel-remove',close);
   on('confirm-remove',async()=>{
     await change(s=>{removeEvents(s,events)});
@@ -57,7 +58,7 @@ export function openDetail(archive,index,row,{refresh,openOriginal}){
   const attempts=new Map(sessions.map((s,i)=>[s.id,i+1]));
   const material=archive.documents.filter(d=>!d.deleted&&d.subject===doc.subject&&['정답지','해설지'].includes(d.type));
   const section=modal('<h2>'+esc(doc.title)+' · '+q.number+'번</h2><div id="detail-crops" class="crops"></div>'+
-    '<div class="row"><button id="goto-original">원본 시험지 열기</button><button id="master">숙지 완료</button></div>'+
+    '<div class="row"><button id="goto-original">원본 시험지 열기</button><button id="reanalyze">영역 재분석</button><button id="master">숙지 완료</button></div>'+
     '<label>주 테마<select id="qt">'+selectOptions(themeOpts,q.theme,'미분류')+'</select></label>'+
     '<details><summary>보조 테마</summary><div class="check-list">'+catalog.map(t=>'<label><input type="checkbox" data-secondary="'+esc(t.id)+'" '+(q.secondary.includes(t.id)?'checked':'')+'> '+esc(themeName(t))+'</label>').join('')+'</div></details>'+
     '<label>숙지 상태<select id="st">'+statuses.map(s=>'<option '+(s===q.status?'selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
@@ -67,9 +68,10 @@ export function openDetail(archive,index,row,{refresh,openOriginal}){
     '<label>부록에 넣을 자료의 페이지<input id="solution-page" type="number" min="1" value="'+esc(q.solution?.page||1)+'"></label></details>'+
     '<div class="row"><button id="qsave" class="primary">변경 저장</button><button id="unlink">테마 연결 모두 해제</button></div>'+
     '<details><summary>오답 이력 '+row.count+'회</summary>'+row.events.map(e=>'<p class="toolbar">'+(attempts.get(e.session)||'?')+'회차 · '+esc((e.date||'').slice(0,10))+'<button data-event="'+esc(e.id)+'">이 회차 제거</button></p>').join('')+'</details>'+
-    '<button id="remove-all" class="danger">이 문항의 전체 오답 이력 제거</button>');
+    '<button id="remove-all" class="danger">이 문항의 전체 오답 이력 제거</button>',{protectEdits:true});
   const crops=$('#detail-crops');renderRegions(crops,row).catch(error=>{if(crops.isConnected)crops.textContent=error.message});
-  on('goto-original',()=>{close();return openOriginal(doc.id,q.number)});
+  on('reanalyze',()=>{if(mayLeaveModal())return compareRegions([row],{refresh,openOriginal})});
+  on('goto-original',()=>{if(!mayLeaveModal())return;close();return openOriginal(doc.id,q.number)});
   async function update(fn){await change(fn);close();await refresh()}
   on('master',()=>update(s=>{setStatus(s,[q.id],'숙지 완료')}));
   on('unlink',()=>update(s=>{assignTheme(s,[q.id],null)}));

@@ -6,6 +6,7 @@ import {emptyFilters,notebookIndex,filterCandidates,searchRows,groupCounts,total
 import {openDetail,openTrash,confirmRemoval,selectOptions,themeName} from './notebook-detail.js';
 import {bindSearch,searchKey} from './search.js';
 import {openPrint} from './print-ui.js';
+import {compareRegions} from './region-ui.js';
 
 let filters=emptyFilters(), editing=false, page=0;
 let filtersOpen=false, groupOpen=false, groupType='kind';
@@ -39,13 +40,13 @@ export function mountNotebook(app,archive,hooks){
     const count=globalCounts.get(name?'subject:'+name:'all')?.unique||0;
     return '<button data-subject="'+name+'">'+(name||'전체')+' <b>'+count+'</b></button>';
   }).join('');
-  app.innerHTML='<div class="toolbar"><h1>오답노트</h1><div class="row">'+button('edit-notebook','편집')+button('print','A4 PDF 출력','primary')+'</div></div>'+
+  app.innerHTML='<h1>오답노트</h1>'+
     '<div class="subject-tabs" aria-label="오답 과목">'+tabs+'</div><div class="notebook-tools">'+
     '<details id="filters"><summary>필터 및 정렬</summary><div class="filter-grid"></div>'+
     '<details class="theme-options"><summary>교재 테마</summary><label>테마 검색<input type="search" id="f-theme-search" placeholder="테마 번호, 이름"></label><div class="check-list"></div><p id="empty-themes" hidden></p></details>'+
     '<label>문제 텍스트 검색<input id="f-search" type="search" value="'+esc(filters.search)+'" placeholder="문제 본문, 시험지명, 메모"></label>'+button('f-clear','필터 초기화')+'</details>'+
     '<details id="group-panel"><summary>분류별 현황</summary><label>분류 기준<select id="group-type"></select></label><div class="facet-list"></div></details></div>'+
-    '<p class="notebook-counts"></p><div class="bulk-bar" hidden><span id="selection-count"></span>'+button('select-all','현재 목록 전체 선택')+button('select-none','선택 해제')+button('bulk-theme','테마 지정')+button('bulk-master','숙지 완료')+button('bulk-print','선택 PDF')+button('bulk-remove','선택 제거','danger')+'</div>'+
+    '<div class="notebook-summary"><p class="notebook-counts"></p><div class="row">'+button('edit-notebook','편집')+button('print','A4 PDF 출력','primary')+'</div></div><div class="bulk-bar" hidden><span id="selection-count"></span>'+button('select-all','현재 목록 전체 선택')+button('select-none','선택 해제')+button('bulk-theme','테마 지정')+button('bulk-master','숙지 완료')+button('bulk-print','선택 PDF')+button('bulk-regions','영역 재분석')+button('bulk-remove','선택 제거','danger')+'</div>'+
     '<div class="notebook-list"></div><div class="row pager" hidden>'+button('nb-prev','이전')+'<span id="nb-page"></span>'+button('nb-next','다음')+'</div>'+
     '<div class="notebook-foot">'+button('mistake-trash','오답 휴지통'+(archive.removedMistakes?.length?' ('+archive.removedMistakes.length+')':''))+analysisControls()+'</div>';
 
@@ -57,7 +58,7 @@ export function mountNotebook(app,archive,hooks){
 
   function updateSelection(){
     $('#selection-count').textContent='선택 '+chosen.size+'문항';
-    for(const id of ['bulk-master','bulk-theme','bulk-print','bulk-remove','select-none'])$('#'+id).disabled=!chosen.size;
+    for(const id of ['bulk-master','bulk-theme','bulk-print','bulk-regions','bulk-remove','select-none'])$('#'+id).disabled=!chosen.size;
   }
   function drawList(){
     page=Math.max(0,Math.min(page,Math.ceil(list.length/pageSize)-1));
@@ -164,11 +165,12 @@ export function mountNotebook(app,archive,hooks){
   cards.onclick=guard(e=>{const b=e.target.closest('[data-detail]');if(b)return openDetail(archive,index,index.byId.get(b.dataset.detail),hooks)});
   cards.onchange=e=>{const b=e.target.closest('[data-pick]');if(!b)return;if(b.checked)chosen.add(b.dataset.pick);else chosen.delete(b.dataset.pick);updateSelection()};
   on('select-all',()=>{list.forEach(r=>chosen.add(r.id));drawList()});on('select-none',()=>{chosen.clear();drawList()});
+  on('bulk-regions',()=>compareRegions(selected(),hooks));
   on('bulk-remove',()=>confirmRemoval(selected().flatMap(row=>row.events),hooks.refresh));
   on('bulk-master',async()=>{await change(s=>{setStatus(s,[...chosen],'숙지 완료')});await hooks.refresh();notice('숙지 완료로 변경했습니다.')});
   on('bulk-theme',()=>{const rows=selected(),sub=rows[0].doc.subject;
     if(rows.some(r=>r.doc.subject!==sub))return notice('한 과목의 문항을 선택하세요.');
-    modal('<h2>선택 '+rows.length+'문항의 주 테마</h2><select id="bulk-target">'+selectOptions(index.catalog.filter(t=>t.subject===sub).map(t=>[t.id,t.path+' · '+themeName(t)]),'','테마 연결 모두 해제')+'</select>'+button('bulk-apply','적용','primary'));
+    modal('<h2>선택 '+rows.length+'문항의 주 테마</h2><select id="bulk-target">'+selectOptions(index.catalog.filter(t=>t.subject===sub).map(t=>[t.id,t.path+' · '+themeName(t)]),'','테마 연결 모두 해제')+'</select>'+button('bulk-apply','적용','primary'),{protectEdits:true});
     on('bulk-apply',async()=>{const id=$('#bulk-target').value;await change(s=>{assignTheme(s,rows.map(r=>r.id),id)});$('#modal').close();await hooks.refresh()});
   });
   on('print',()=>openPrint(archive,list,filters));on('bulk-print',()=>openPrint(archive,selected(),filters));

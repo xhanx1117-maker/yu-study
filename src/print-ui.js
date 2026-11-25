@@ -1,6 +1,6 @@
 import {change} from './db.js';
 import {download} from './backup.js';
-import {$,esc,on,modal,notice} from './ui.js';
+import {$,esc,on,modal,notice,markModalSaved} from './ui.js';
 import {orders} from './notebook-model.js';
 import {printSettings,layouts} from './workbook-layout.js';
 import {prepareWorkbook,renderArea} from './workbook-source.js';
@@ -25,7 +25,7 @@ export function openPrint(archive,rows,filters){
     '<div class="print-checks">'+Object.entries(toggles).map(([k,v])=>'<label><input data-option="'+k+'" type="checkbox" '+(opts[k]?'checked':'')+'> '+v+'</label>').join('')+'</div></details>'+
     (missing.length?'<label class="tick"><input id="skip-missing" type="checkbox"> 영역 미지정 '+missing.length+'문항 제외</label><small>'+esc(missing.slice(0,4).map(r=>r.doc.title+' '+r.question.number+'번').join(', '))+'</small>':'')+
     '<div class="row"><button id="make-proof" class="primary">미리보기 생성</button><button id="stop-print" hidden>생성 취소</button></div>'+
-    '<p id="print-status" role="status"></p><progress id="print-meter" hidden></progress><div id="proof-result"></div>');
+    '<p id="print-status" role="status"></p><progress id="print-meter" hidden></progress><div id="proof-result"></div>',{protectEdits:true});
   const dialog=$('#modal');
   let controller,proof,url,renderController,revision=0,index=1,readyFile;
   function discard(){
@@ -40,6 +40,7 @@ export function openPrint(archive,rows,filters){
   section.addEventListener('change',optionChanged);
   on('stop-print',()=>controller?.abort());
   function busy(active){
+    section.setAttribute('aria-busy',String(active));
     section.querySelectorAll('select,input,#make-proof').forEach(el=>el.disabled=active);
     $('#stop-print').hidden=!active;$('#print-meter').hidden=!active;
   }
@@ -76,7 +77,7 @@ export function openPrint(archive,rows,filters){
       $('#pdfpreview').href=url;on('pdfsave',()=>download(file,file.name));on('pdfshare',async()=>{if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file]});else download(file,file.name)});
       on('proof-prev',()=>{index=Math.max(1,index-1);return display()});on('proof-next',()=>{index=Math.min(proof.numPages,index+1);return display()});
       await display();signal.throwIfAborted();
-      await change(s=>{s.printSettings=selected});archive.printSettings=selected;
+      await change(s=>{s.printSettings=selected});archive.printSettings=selected;markModalSaved();
       if(token===revision)$('#print-status').textContent=book.questionCount+'문항 · '+book.plan.pages.length+'쪽';
     }catch(error){if(token===revision){discard();$('#print-status').textContent=signal.aborted?'출력을 취소했습니다.':error.message}}
     finally{if(token===revision)busy(false)}
