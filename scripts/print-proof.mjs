@@ -81,10 +81,32 @@ try{
           if(synthetic){
             const pixels=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;
             for(let i=0;i<pixels.length;i+=4)if(pixels[i]>200&&pixels[i+1]<60&&pixels[i+2]>90)magenta++;
+            // Measure ink in the actual exported file. A caption must survive rendering
+            // and have a clear strip across the column before the source crop starts.
+            const placements=prepared.plan.pages[n-1].placements;
+            for(const crop of placements.filter(p=>p.kind==='crop')){
+              const label=placements.find(p=>p.kind==='label'&&p.item===crop.item);
+              let lastInk=-1;
+              for(let y=Math.ceil(label.y*1.5);y<Math.floor(crop.y*1.5);y++)
+                for(let x=Math.ceil(crop.x*1.5);x<Math.floor((crop.x+crop.w)*1.5);x++)
+                  if(pixels[(y*cv.width+x)*4]<190){lastInk=y;break}
+              if(lastInk<0 || crop.y*1.5-lastInk<7)throw Error('Caption or clear space above question is missing');
+            }
           }
           rendered.push(cv.toDataURL('image/png').split(',')[1]);cv.width=cv.height=1;
           const reader=sheet.streamTextContent().getReader();
-          try{for(;;){const {done,value}=await reader.read();if(done)break;texts.push(...value.items.filter(t=>t.str).map(t=>({s:t.str,size:Math.hypot(t.transform[0],t.transform[1])})))}}finally{reader.releaseLock()}
+          let pageNumbers=0;
+          try{for(;;){const {done,value}=await reader.read();if(done)break;
+            for(const t of value.items.filter(t=>t.str)){
+              texts.push({s:t.str,size:Math.hypot(t.transform[0],t.transform[1])});
+              if(t.str===n+' / '+exported.numPages){
+                pageNumbers++;
+                if(Math.abs(t.transform[4]+t.width/2-prepared.plan.width/2)>1 ||
+                  t.transform[5]<6 || t.transform[5]>prepared.plan.height*.1)throw Error('Page number is outside the centered footer');
+              }
+            }
+          }}finally{reader.releaseLock()}
+          if(synthetic && pageNumbers!==1)throw Error('Expected exactly one page number');
           sheet.cleanup();
         }
       }finally{await exported.destroy()}

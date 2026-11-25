@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planWorkbook, MM,A4,printSettings} from '../src/workbook-layout.js';
+import {planWorkbook, MM,A4,printSettings,labelLineHeight} from '../src/workbook-layout.js';
 
 const block=(id,w=90*MM,h=60*MM,extras={})=>({id,labels:[{role:'source',text:id}],parts:[{width:w,height:h,breaks:[],...extras}]});
 const crops=plan=>plan.pages.flatMap(page=>page.placements.filter(p=>p.kind==='crop'));
@@ -55,4 +55,23 @@ test('only untouched legacy automatic settings move to the two-column preset',()
   assert.equal(printSettings(old).mode,'two');
   assert.equal(printSettings({...old,gap:6}).mode,'auto');
   assert.equal(printSettings({...old,settingsVersion:2}).mode,'auto');
+});
+
+test('caption bands move with the question and both columns leave the footer clear',()=>{
+  const source=block('wrapped',244,390);
+  source.labels.push({role:'detail',text:'Long theme '.repeat(14)});
+  for(const mode of ['two','one','individual','original','auto']){
+    const plan=planWorkbook([block('short',244,360),source,block('last',244,425)],{mode});
+    for(const page of plan.pages){
+      for(const crop of page.placements.filter(p=>p.kind==='crop')){
+        const label=page.placements.filter(p=>p.kind==='label'&&p.item===crop.item).at(-1);
+        assert.ok(label && label.x===crop.x);
+        assert.ok(crop.y-label.y-labelLineHeight(label.size)>=4.99);
+        assert.ok(crop.y+crop.h<=plan.footer.baseline-plan.footer.size-7.99);
+      }
+      assert.ok(page.dividers.every(r=>r.end<=plan.bottom+.01));
+    }
+  }
+  const bare=block('unnumbered');bare.labels=[];
+  const plan=planWorkbook([bare],{});assert.equal(crops(plan)[0].y,plan.top);
 });

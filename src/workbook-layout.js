@@ -1,6 +1,8 @@
 // All layout coordinates are PDF points measured from the top-left of an A4 sheet.
 export const MM = 72 / 25.4;
 export const A4 = {width:210*MM,height:297*MM};
+export const labelLineHeight=size=>size+4;
+const captionBodyGap=5;
 export const layouts = {auto:'원본 기반 자동',two:'시험지형 2단',one:'시험지형 1단',original:'원본 페이지',individual:'문항별 개별 페이지'};
 export const defaults = {mode:'two',scale:100,margin:5,gap:3,divider:true,source:true,number:true,serial:false,
   theme:false,bookPage:false,count:false,memo:false,answers:false,sections:false,order:'current'};
@@ -39,7 +41,8 @@ export function wrapLines(text,width,measure,size) {
 
 export function planWorkbook(items, input, measure=(text,size)=>[...text].length*size*.78){
   const options=printSettings(input), margin=options.margin*MM,gap=options.gap*MM,gutter=3*MM;
-  const top=margin+22,bottom=A4.height-margin-3,full=A4.width-2*margin,colWidth=(full-gutter)/2;
+  const footer={baseline:A4.height-margin,size:8};
+  const top=margin+22,bottom=footer.baseline-footer.size-8,full=A4.width-2*margin,colWidth=(full-gutter)/2;
   const requested=options.scale/100, pages=[];
   let page, band, ends, column;
   function newPage(){
@@ -73,8 +76,9 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
     const lines=[];
     for(const label of item.labels||[]){
       const size=label.role==='section'?11:label.role==='memo'?8:7;
-      for(const line of wrapLines(label.text,width,measure,size)) lines.push({kind:'label',text:line,role:label.role,size,h:size+2});
+      for(const line of wrapLines(label.text,width,measure,size)) lines.push({kind:'label',text:line,role:label.role,size,h:labelLineHeight(size)});
     }
+    if(lines.length && item.parts.length)lines.at(-1).h+=captionBodyGap;
     return lines;
   }
   for(const item of items){
@@ -114,7 +118,11 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
     if(totalHeight<=bottom-top)space(wide,totalHeight);
     else space(wide,Math.min(bottom-top,labelHeight+Math.min(tiles[0]?.part.height*tiles[0]?.scale||0,100)));
     function labels(){
-      captions.forEach(line=>{space(wide,line.h);draw(wide,{...line,width:usable,item:item.id})});
+      captions.forEach((line,index)=>{
+        const first=tiles[0];
+        const keep=first && index===captions.length-1?Math.min(38,first.part.height*first.scale):0;
+        space(wide,line.h+keep);draw(wide,{...line,width:usable,item:item.id});
+      });
     }
     // Keep the source with its first crop when the complete first region fits a fresh slot.
     if(tiles.length&&labelHeight+tiles[0].part.height*tiles[0].scale<=bottom-top)space(wide,labelHeight+tiles[0].part.height*tiles[0].scale);
@@ -145,5 +153,5 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
     const rule=sheet.dividers.at(-1),last=sheet.placements.at(-1);
     if(rule && last && rule.end>=last.y-.01 && !last.wide)rule.end=bottom;
   }
-  return {pages:pages.filter(p=>p.placements.length),margin,top,bottom,gutter,width:A4.width,height:A4.height};
+  return {pages:pages.filter(p=>p.placements.length),margin,top,bottom,gutter,footer,width:A4.width,height:A4.height};
 }

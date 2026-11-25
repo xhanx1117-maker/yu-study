@@ -3,6 +3,7 @@ import {openPdf} from './pdf.js';
 import {renderArea} from './workbook-source.js';
 import {vectorCrops} from './vector-client.js';
 import {loadPrintFont,printFont} from './print-font.js';
+import {labelLineHeight} from './workbook-layout.js';
 
 let library;
 export async function loadLibrary(){
@@ -26,11 +27,18 @@ async function labelImage(output,page,text,x,top,size,maxWidth,height,bold=false
   const factor=4,canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
   const font=(bold?'600 ':'')+size+'px '+printFont;
   ctx.font=font;
-  const w=Math.min(maxWidth,Math.ceil(ctx.measureText(text).width)+2);
-  canvas.width=Math.max(1,Math.ceil(w*factor));canvas.height=Math.ceil((size+4)*factor);
+  const metrics=ctx.measureText(text),boxHeight=labelLineHeight(size);
+  const ascent=metrics.actualBoundingBoxAscent,descent=metrics.actualBoundingBoxDescent;
+  const left=Math.max(0,metrics.actualBoundingBoxLeft);
+  const width=left+Math.max(metrics.width,metrics.actualBoundingBoxRight);
+  const fit=Math.min(1,(maxWidth-1)/Math.max(1,width),(boxHeight-1)/Math.max(1,ascent+descent));
+  canvas.width=Math.max(1,Math.ceil((width*fit+1)*factor));canvas.height=Math.ceil(boxHeight*factor);
   try{
-    ctx.scale(factor,factor);ctx.font=font;ctx.textBaseline='top';ctx.fillStyle=bold?'#171717':'#343434';
-    ctx.fillText(text,0,1,w);
+    // Paint within the exact line box reserved by the planner, including Korean descenders.
+    const baseline=(boxHeight+(ascent-descent)*fit)/2;
+    ctx.scale(factor,factor);ctx.translate(.5+left*fit,baseline);ctx.scale(fit,fit);
+    ctx.font=font;ctx.textBaseline='alphabetic';ctx.fillStyle=bold?'#171717':'#343434';
+    ctx.fillText(text,0,0);
     const image=await output.embedPng(await png(canvas));await image.embed();
     page.drawImage(image,{x,y:height-top-canvas.height/factor,width:canvas.width/factor,height:canvas.height/factor});
   }finally{canvas.width=canvas.height=1}
@@ -93,12 +101,13 @@ export async function writeWorkbook(prepared, title, signal, progress,readFile=k
     for(const [i,sheet] of plan.pages.entries()){
       signal.throwIfAborted();
       const paper=output.addPage([plan.width,plan.height]);
-      await labelImage(output,paper,'Yu: study  ·  '+title,plan.margin,plan.margin-1,11,plan.width-2*plan.margin-48,plan.height,true);
+      await labelImage(output,paper,'Yu: study  ·  '+title,plan.margin,plan.margin-1,11,plan.width-2*plan.margin,plan.height,true);
       const line=(x1,y1,x2,y2)=>paper.drawLine({start:{x:x1,y:plan.height-y1},end:{x:x2,y:plan.height-y2},thickness:.45,color:lib.rgb(.55,.55,.55)});
       line(plan.margin,plan.top-6,plan.width-plan.margin,plan.top-6);
       for(const r of sheet.dividers)line(plan.width/2,r.start,plan.width/2,r.end);
       const footer=(i+1)+' / '+plan.pages.length;
-      paper.drawText(footer,{x:plan.width-plan.margin-plain.widthOfTextAtSize(footer,8),y:plan.height-plan.margin-9,size:8,font:plain,color:lib.rgb(.2,.2,.2)});
+      const footerWidth=plain.widthOfTextAtSize(footer,plan.footer.size);
+      paper.drawText(footer,{x:(plan.width-footerWidth)/2,y:plan.height-plan.footer.baseline,size:plan.footer.size,font:plain,color:lib.rgb(.2,.2,.2)});
       for(const item of sheet.placements){
         signal.throwIfAborted();
         if(item.kind==='label'){
