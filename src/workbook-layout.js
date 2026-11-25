@@ -2,7 +2,7 @@
 export const MM = 72 / 25.4;
 export const A4 = {width:210*MM,height:297*MM};
 export const layouts = {auto:'원본 기반 자동',two:'시험지형 2단',one:'시험지형 1단',original:'원본 페이지',individual:'문항별 개별 페이지'};
-export const defaults = {mode:'auto',scale:100,margin:8,gap:4,divider:true,source:true,number:true,serial:false,
+export const defaults = {mode:'two',scale:100,margin:6,gap:3,divider:true,source:true,number:true,serial:false,
   theme:false,bookPage:false,count:false,memo:false,answers:false,sections:false,order:'current'};
 export function printSettings(input={}) {
   const result={...defaults};
@@ -33,7 +33,7 @@ export function wrapLines(text,width,measure,size) {
 
 export function planWorkbook(items, input, measure=(text,size)=>[...text].length*size*.78){
   const options=printSettings(input), margin=options.margin*MM,gap=options.gap*MM,gutter=5*MM;
-  const top=margin+23,bottom=A4.height-margin-16,full=A4.width-2*margin,colWidth=(full-gutter)/2;
+  const top=margin+22,bottom=A4.height-margin-3,full=A4.width-2*margin,colWidth=(full-gutter)/2;
   const requested=options.scale/100, pages=[];
   let page, band, ends, column;
   function newPage(){
@@ -46,13 +46,17 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
   }
   function draw(wide,placement){
     const y=position(wide), x=margin+(!wide&&column===1?colWidth+gutter:0);
-    page.placements.push({...placement,x,y});
+    page.placements.push({...placement,x,y,wide});
     if(!wide&&options.divider){
       let rule=page.dividers.find(rule=>rule.start===band);
       if(!rule){rule={start:band,end:y};page.dividers.push(rule)}
       rule.end=Math.max(rule.end,y+placement.h);
     }
-    if(wide){band=y+placement.h;ends=[band,band];column=0}
+    if(wide){
+      const rule=page.dividers.find(rule=>rule.start===band);
+      if(rule)rule.end=y;
+      band=y+placement.h;ends=[band,band];column=0;
+    }
     else ends[column]=y+placement.h;
   }
   function advance(wide,distance){
@@ -62,24 +66,32 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
   function blockLabels(item,width){
     const lines=[];
     for(const label of item.labels||[]){
-      const size=label.role==='section'?12:label.role==='memo'?8.5:8;
-      for(const line of wrapLines(label.text,width,measure,size)) lines.push({kind:'label',text:line,role:label.role,size,h:size+3});
+      const size=label.role==='section'?11:label.role==='memo'?8:7;
+      for(const line of wrapLines(label.text,width,measure,size)) lines.push({kind:'label',text:line,role:label.role,size,h:size+2});
     }
     return lines;
   }
   for(const item of items){
     if(!page || ((options.mode==='individual'||options.mode==='original'||item.newPage)&&page.placements.length))newPage();
-    const widest=Math.max(1,...item.parts.map(p=>p.width));
+    // Scale the source sheet to the target paper first. A B4 half-column is
+    // consequently still a half-column on A4. View zoom and raster DPI never enter here.
+    const paperScale=p=>p.pageWidth && p.pageHeight
+      ? Math.min(1,A4.width/p.pageWidth,A4.height/p.pageHeight) : 1;
+    const normalized=p=>paperScale(p)*requested;
     const wide=['one','individual','original'].includes(options.mode)||item.full ||
-      (options.mode==='auto'&&item.parts.some(p=>p.oneColumn)) || widest*requested>colWidth/.90;
+      item.parts.some(p=>(options.mode==='auto'&&p.oneColumn) ||
+        p.width*normalized(p)>colWidth*1.3 && (p.oneColumn||!p.pageWidth||p.width>.67*p.pageWidth));
     const usable=wide?full:colWidth;
     const captions=blockLabels(item,usable),labelHeight=captions.reduce((n,l)=>n+l.h,0);
     const tiles=[];
     for(const part of item.parts){
-      let scale=Math.min(requested,usable/part.width);
+      const target=normalized(part);
+      // All crops from one source column share its fit, including narrower questions.
+      const laneWidth=!wide && part.laneWidth ? Math.max(part.width,part.laneWidth) : part.width;
+      let scale=Math.min(target,usable/laneWidth);
       // A very wide foldout is printed in overlapping panels rather than tiny type.
-      const tiled=scale<requested*.76 && !part.wholePage;
-      if(tiled)scale=requested;
+      const tiled=scale<target*.76 && !part.wholePage;
+      if(tiled)scale=target;
       if(part.wholePage){
         const available=bottom-top-labelHeight;
         scale=Math.min(scale,(available>=(bottom-top)*.52?available:bottom-top)/part.height);
@@ -122,6 +134,10 @@ export function planWorkbook(items, input, measure=(text,size)=>[...text].length
       advance(wide,2);
     }
     advance(wide,gap);
+  }
+  for(const sheet of pages){
+    const rule=sheet.dividers.at(-1),last=sheet.placements.at(-1);
+    if(rule && last && rule.end>=last.y-.01 && !last.wide)rule.end=bottom;
   }
   return {pages:pages.filter(p=>p.placements.length),margin,top,bottom,gutter,width:A4.width,height:A4.height};
 }

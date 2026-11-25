@@ -56,8 +56,10 @@ function measureArea(part,page,pixels){
 
 function labelsFor(row,options,seq,indexTheme) {
   const {doc,question:q,linked,count}=row,labels=[];
-  const source=options.source?[doc.year,doc.exam,doc.title].filter(Boolean).join(' · '):'';
-  const line=[options.serial?'문항 '+seq:'',source,options.number?'원문 '+q.number+'번':''].filter(Boolean).join('   ');
+  const exam=[doc.year,doc.exam].filter(Boolean).join(' ');
+  const grade=doc.title?.match(/[79]급/)?.[0];
+  const source=options.source?([exam,grade && !exam.includes('급')?grade:''].filter(Boolean).join(' ')||doc.title):'';
+  const line=[options.serial?'문항 '+seq:'',source,options.number?'원문 '+q.number+'번':''].filter(Boolean).join(' · ');
   if(line)labels.push({role:'source',text:line});
   const themes=indexTheme?[indexTheme,...linked.filter(t=>t!==indexTheme)]:linked;
   const details=[];

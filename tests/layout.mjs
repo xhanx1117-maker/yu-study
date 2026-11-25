@@ -35,3 +35,17 @@ test('oversized drawings tile with overlap and saved settings are range checked'
   const panels=crops(p);assert.ok(panels.length>=3);assert.ok(panels.every(c=>c.scale===1));
   assert.equal(panels[0].sourceX,0);assert.equal(panels.at(-1).sourceX+panels.at(-1).sourceW,1150);
 });
+
+test('a B4 text column is normalized once per sheet and flows in reading order',()=>{
+  const source={pageWidth:728,pageHeight:1031,laneWidth:333};
+  const items=Array.from({length:6},(_,i)=>block('B'+i, i%2?300:331,245,source));
+  const plan=planWorkbook(items,{}),placed=crops(plan);
+  const ratio=Math.min(A4.width/728,A4.height/1031);
+  assert.equal(printSettings().mode,'two');
+  assert.equal(plan.pages.length,1);
+  assert.equal(placed.length,6);
+  assert.deepEqual(placed.map(v=>v.item),items.map(v=>v.id));
+  for(const v of placed)assert.ok(Math.abs(v.scale-ratio)<.001);
+  assert.ok(placed[2].x<A4.width/2 && placed[3].x>A4.width/2);
+  assert.deepEqual(plan.pages[0].dividers,[{start:plan.top,end:plan.bottom}]);
+});

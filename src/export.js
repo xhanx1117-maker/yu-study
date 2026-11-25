@@ -28,7 +28,7 @@ async function labelImage(output,page,text,x,top,size,maxWidth,height,bold=false
   const w=Math.min(maxWidth,Math.ceil(ctx.measureText(text).width)+2);
   canvas.width=Math.max(1,Math.ceil(w*factor));canvas.height=Math.ceil((size+4)*factor);
   try{
-    ctx.scale(factor,factor);ctx.font=font;ctx.textBaseline='top';ctx.fillStyle=bold?'#193e30':'#35483c';
+    ctx.scale(factor,factor);ctx.font=font;ctx.textBaseline='top';ctx.fillStyle=bold?'#171717':'#343434';
     ctx.fillText(text,0,1,w);
     const image=await output.embedPng(await png(canvas));await image.embed();
     page.drawImage(image,{x,y:height-top-canvas.height/factor,width:canvas.width/factor,height:canvas.height/factor});
@@ -91,12 +91,12 @@ export async function writeWorkbook(prepared, title, signal, progress){
     for(const [i,sheet] of plan.pages.entries()){
       signal.throwIfAborted();
       const paper=output.addPage([plan.width,plan.height]);
-      await labelImage(output,paper,title,plan.margin,plan.margin-1,13,plan.width-2*plan.margin,plan.height,true);
-      const line=(x1,y1,x2,y2)=>paper.drawLine({start:{x:x1,y:plan.height-y1},end:{x:x2,y:plan.height-y2},thickness:.45,color:lib.rgb(.7,.76,.71)});
+      await labelImage(output,paper,'Yu: study  ·  '+title,plan.margin,plan.margin-1,11,plan.width-2*plan.margin-48,plan.height,true);
+      const line=(x1,y1,x2,y2)=>paper.drawLine({start:{x:x1,y:plan.height-y1},end:{x:x2,y:plan.height-y2},thickness:.45,color:lib.rgb(.55,.55,.55)});
       line(plan.margin,plan.top-6,plan.width-plan.margin,plan.top-6);
       for(const r of sheet.dividers)line(plan.width/2,r.start,plan.width/2,r.end);
-      const footer='Yu: study  /  '+(i+1)+'  /  '+plan.pages.length;
-      paper.drawText(footer,{x:plan.width-plan.margin-plain.widthOfTextAtSize(footer,8),y:plan.margin-1,size:8,font:plain,color:lib.rgb(.3,.36,.31)});
+      const footer=(i+1)+' / '+plan.pages.length;
+      paper.drawText(footer,{x:plan.width-plan.margin-plain.widthOfTextAtSize(footer,8),y:plan.height-plan.margin-9,size:8,font:plain,color:lib.rgb(.2,.2,.2)});
       for(const item of sheet.placements){
         signal.throwIfAborted();
         if(item.kind==='label'){

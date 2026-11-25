@@ -191,7 +191,8 @@ try{
   assert.equal(shared.length,2);assert.equal(shared.flatMap(p=>p.orange).length,1,'shared Korean bitmap once');
   await close();await tab('영어');await make('auto');const rotate=await saveAndInspect('rotated');await close();
   const [x1,y1,x2,y2]=rotate[0].blueBounds;
-  assert.ok(y2-y1>=116&&y2-y1<=122&&x2-x1<=10,'rotated crop keeps orientation and 60 pt length at UserUnit 1.25');
+  const rotatedLength=120*Math.min(1,595.276/693.75,841.89/450);
+  assert.ok(Math.abs(y2-y1-rotatedLength)<=4&&x2-x1<=10,'rotated crop follows the sheet fit and UserUnit 1.25');
   await tab('행정법');await summary('#filters');await page.locator('#f-year').selectOption('2025');await hasCount(7);
   await make('original');const original=await saveAndInspect('original');assert.equal(original.length,1);assert.ok(original[0].outside>100);await close();
   await click('edit-notebook');await page.locator('[data-pick="law#1"]').check();await page.locator('[data-pick="law#3"]').check();
