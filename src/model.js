@@ -28,19 +28,21 @@ export function classify(s,data){if(data?.version!==1||!Array.isArray(data.resul
 export function validate(s){if(s?.version!==1)throw Error('지원하지 않는 백업 버전');
  for(const k of ['documents','questions','events','sessions','reviews','books']){if(!Array.isArray(s[k])||new Set(s[k].map(x=>x.id)).size!==s[k].length||s[k].some(x=>!x.id))throw Error('백업 ID 오류')}
  if(!Array.isArray(s.examTypes)||s.examTypes.some(x=>typeof x!=='string'))throw Error('시험 종류 오류');
- const ts=themes({schemaVersion:1,books:s.books});const doc=id=>s.documents.find(x=>x.id===id),q=id=>s.questions.find(x=>x.id===id);
+ const ts=new Set(themes({schemaVersion:1,books:s.books}).map(t=>t.id));
+ const docs=new Map(s.documents.map(d=>[d.id,d])),qs=new Map(s.questions.map(q=>[q.id,q])),sessions=new Map(s.sessions.map(a=>[a.id,a.doc]));
+ const doc=id=>docs.get(id),q=id=>qs.get(id);
  for(const d of s.documents)if(!/^[a-f0-9]{64}$/.test(d.hash)||!Number.isInteger(d.count)||d.count<1||d.count>300)throw Error('자료 정보 오류');
  for(const a of s.sessions)if(!doc(a.doc))throw Error('풀이 회차 오류');
- for(const x of s.questions){if(!doc(x.doc)||!Array.isArray(x.regions)||!Array.isArray(x.secondary)||[x.theme,...x.secondary].filter(Boolean).some(id=>!ts.some(t=>t.id===id)))throw Error('문항 연결 오류');
+ for(const x of s.questions){if(!doc(x.doc)||!Array.isArray(x.regions)||!Array.isArray(x.secondary)||[x.theme,...x.secondary].filter(Boolean).some(id=>!ts.has(id)))throw Error('문항 연결 오류');
  for(const r of x.regions)if(!Number.isInteger(r.page)||r.page<1||![r.x,r.y,r.w,r.h].every(Number.isFinite)||r.x<0||r.y<0||r.w<=0||r.h<=0||r.x+r.w>1.00001||r.y+r.h>1.00001)throw Error('문항 좌표 오류')}
- for(const e of s.events)if(!q(e.q)||!s.sessions.some(a=>a.id===e.session&&a.doc===q(e.q).doc))throw Error('오답 연결 오류');
+ for(const e of s.events)if(!q(e.q)||sessions.get(e.session)!==q(e.q).doc)throw Error('오답 연결 오류');
  for(const r of s.reviews)if(!q(r.q))throw Error('복습 연결 오류');
  if(s.purgedAttempts!==undefined&&(!Array.isArray(s.purgedAttempts)||s.purgedAttempts.some(k=>typeof k!=='string')))throw Error('영구 삭제 이력 형식 오류');
  if(s.removedMistakes!==undefined){
    if(!Array.isArray(s.removedMistakes))throw Error('오답 휴지통 형식 오류');
    for(const batch of s.removedMistakes){
      if(!batch.id||!Array.isArray(batch.events))throw Error('오답 휴지통 항목 오류');
-     for(const event of batch.events)if(!event.id||!q(event.q)||!s.sessions.some(a=>a.id===event.session&&a.doc===q(event.q).doc))throw Error('오답 휴지통 연결 오류');
+     for(const event of batch.events)if(!event.id||!q(event.q)||sessions.get(event.session)!==q(event.q).doc)throw Error('오답 휴지통 연결 오류');
    }
  }
  return s}

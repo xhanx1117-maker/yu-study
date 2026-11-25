@@ -1,7 +1,7 @@
 name: Test and publish Yu study
 on:
   push:
-    branches: [main, notebook-workbooks-v03, exam-print-v04]
+    branches: [main, notebook-workbooks-v03, exam-print-v04, bulk-library-v05]
   workflow_dispatch:
 permissions:
   contents: read
@@ -52,6 +52,12 @@ jobs:
         run: node scripts/workbook-test.mjs
         env:
           YU_TEST_ENGINE: webkit
+      - name: Import and resume mixed ZIP collections on Chromium and WebKit
+        run: |
+          node scripts/bulk-test.mjs
+          YU_TEST_ENGINE=webkit node scripts/bulk-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
       - name: Render scaled B4 papers and check final choices in both tablet engines
         run: |
           node scripts/print-proof.mjs

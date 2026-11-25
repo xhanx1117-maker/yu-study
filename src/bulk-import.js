@@ -13,14 +13,17 @@ export const jobRows=job=>entries(prefix(job.id));
 export const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));
 const paused=control=>control.pause||document.hidden;
 export async function discover(files){
-  const sources=new Map(),problems=[];let total=0;
+  const sources=new Map(),problems=[],repeated=new Map();let total=0;
+  for(const file of files){const key=JSON.stringify([safePath(file.webkitRelativePath||file.name),file.size]);repeated.set(key,(repeated.get(key)||0)+1)}
   for(const file of files){
     const source=safePath(file.webkitRelativePath||file.name);
     if(!source||ignoredPath(source))continue;
-    const key=[source,file.size,file.lastModified||0].join('\n');
-    function add(path,size,read,extra='',error=''){
+    // File providers can change lastModified when the same archive is picked again.
+    // Each ZIP member also carries its ordinal, CRC and path. Raw PDFs are hashed at preview.
+    const key=[source,file.size].join('\n');
+    function add(path,size,read,extra='',error='',digest=''){
       const id=JSON.stringify([key,path,extra]);
-      if(!sources.has(id)){sources.set(id,{id,path,size,read,error});total+=size}
+      if(!sources.has(id)){sources.set(id,{id,path,size,read,error,digest});total+=size}
     }
     if(/\.zip$/i.test(source)){
       try{
@@ -31,7 +34,11 @@ export async function discover(files){
         for(const [i,e] of list.entries())if(/\.pdf$/i.test(e.path))add(source.replace(/\.zip$/i,'')+'/'+e.path,e.size,e.blob,i+':'+e.crc,e.error);
         if(!list.some(e=>/\.pdf$/i.test(e.path)))problems.push(source+' · PDF가 없습니다.');
       }catch(e){problems.push(source+' · '+e.message)}
-    }else if(/\.pdf$/i.test(source)||file.type==='application/pdf')add(source,file.size,()=>file);
+    }else if(/\.pdf$/i.test(source)||file.type==='application/pdf'){
+      const sameName=repeated.get(JSON.stringify([source,file.size]))>1;
+      const digest=sameName&&file.size<=512*MiB?await digestBytes(await file.arrayBuffer()):'';
+      add(source,file.size,()=>file,digest,'',digest);
+    }
     if(sources.size>25000||total>16*1024*MiB)throw Error('한 작업의 한도는 PDF 25,000개 또는 16 GB입니다. 묶음을 나누어 주세요.');
   }
   return {sources,problems,total};
@@ -74,7 +81,7 @@ export async function preview(job,rows,sources,control,report,failedOnly=false){
         if(!row.size||row.size>512*MiB)throw Error('빈 PDF 또는 개별 파일 512 MB 한도 초과');
         const file=await source.read(),buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
         if(!new TextDecoder().decode(bytes.subarray(0,1024)).includes('%PDF-'))throw Error('PDF 형식을 확인할 수 없습니다.');
-        const hash=await digestBytes(bytes);row.hash=hash;
+        const hash=source.digest||await digestBytes(bytes);row.hash=hash;
         if(known.has(hash)){Object.assign(row,{status:'duplicate',error:''});await storePreview(job,row)}
         else{
           if(processed++%24===0){const estimate=await navigator.storage?.estimate?.().catch(()=>null);budget=estimate?.quota?estimate.quota-estimate.usage:Infinity}
@@ -138,7 +145,9 @@ export async function register(job,rows,control,report){
 export const mapKey=d=>'auto-regions:'+d.id+':'+d.hash;
 export const automaticMap=d=>d.externalRegions?get('meta',mapKey(d)):undefined;
 export async function analyse(job,control,report,{retry=false}={}){
-  const archive=await state(),queue=archive.documents.filter(d=>!d.deleted&&d.importId===job.id&&(d.analysisState==='queued'||retry&&d.analysisState==='error'));
+  const belongs=d=>!d.deleted&&(!job||d.importId===job.id);
+  const archive=await state(),queue=archive.documents.filter(d=>belongs(d)&&(d.analysisState==='queued'||retry&&d.analysisState==='error'));
+  if(!queue.length)return true;
   const worker=await batchWorker();let batch=[],bytes=0;
   async function flush(){
     if(!batch.length)return;
@@ -150,7 +159,7 @@ export async function analyse(job,control,report,{retry=false}={}){
         if(error){current.analysisState='error';current.analysisError=error;continue}
         const nums=Object.keys(map).map(Number).sort((a,b)=>a-b);
         if(nums.length){
-          meta.put(map,mapKey(current));current.externalRegions=true;
+          meta.put(map,mapKey(current));current.externalRegions=true;current.analysisBytes=new Blob([JSON.stringify(map)]).size;
           for(const q of s.questions)if(q.doc===current.id&&map[q.number]&&!protectedRegion(q)&&!protectedRegion(current.detected?.[q.number]))Object.assign(q,map[q.number]);
           if(!current.countLocked&&nums.every((v,i)=>v===i+1)&&!s.questions.some(q=>q.doc===current.id&&q.number>nums.length)){
             current.count=nums.length;current.countKnown=true;
@@ -177,7 +186,7 @@ export async function analyse(job,control,report,{retry=false}={}){
     }
     await flush();
   }finally{worker.destroy()}
-  return !(await state()).documents.some(d=>d.importId===job.id&&!d.deleted&&d.analysisState==='queued');
+  return !(await state()).documents.some(d=>belongs(d)&&d.analysisState==='queued');
 }
 export async function finishJob(job){
   const rows=await jobRows(job);

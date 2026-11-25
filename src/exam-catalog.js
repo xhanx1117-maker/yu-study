@@ -36,7 +36,7 @@ export function classifyExam(path,{heading='',sample='',pages=0,scanned=false,ex
     return values[0]||'';
   }
   const isAnswer=parts.some(p=>p.answer),possible=unique(parts.flatMap(p=>p.subjects));
-  const combined=isAnswer&&(parts.some(p=>p.combined)||possible.length>1);
+  const combined=isAnswer&&parts.some(p=>p.combined||p.subjects.length>1);
   const subject=combined?'통합':resolve('subjects','과목')||'미분류';
   let exam=resolve('exams','시험');const grade=resolve('grades','급수'),year=resolve('years','연도');
   if((exam==='국가직'||exam==='지방직')&&grade)exam+=' '+grade;

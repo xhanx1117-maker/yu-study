@@ -36,8 +36,8 @@ export async function buildApp(portable=true){
   else console.log('Portable preview uses lossless crop rendering.');
   for(const name of ['pdf.min.mjs','pdf.worker.min.mjs']) await copy(path.join(mods,'pdfjs-dist/legacy/build',name),'vendor/'+name);
   for(const name of ['cmaps','standard_fonts','wasm']) await copy(path.join(mods,'pdfjs-dist',name),'vendor/'+name);
-  await copy(path.join(mods,'jszip/dist/jszip.min.js'),'vendor/jszip.min.js');
-  await copy(path.join(mods,'jszip/LICENSE.markdown'),'vendor/jszip-LICENSE.txt');
+
+
   await copy(path.join(mods,'pdfjs-dist/LICENSE'),'vendor/pdfjs-LICENSE.txt');
   async function list(dir){let out=[];for(const e of await readdir(dir,{withFileTypes:true})){const f=path.join(dir,e.name);out.push(...(e.isDirectory()?await list(f):[path.relative(dist,f).split(path.sep).join('/')]));}return out;}
   await copy(path.join(mods,'pdf-lib/dist/pdf-lib.min.js'),'vendor/pdf-lib.min.js');
@@ -48,6 +48,7 @@ export async function buildApp(portable=true){
   const cache='yu-study-shell-'+hash.digest('hex').slice(0,16);
   await writeFile(path.join(dist,'sw.js'),`const cache=${JSON.stringify(cache)}, files=${JSON.stringify(files)}.map(p=>new URL(p,self.registration.scope).href);
 self.addEventListener('install',e=>e.waitUntil(caches.open(cache).then(c=>c.addAll(files))));
+self.addEventListener('message',e=>{if(e.data?.type==='APPLY_UPDATE')e.waitUntil((async()=>{const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});if(windows.filter(c=>c.url.startsWith(self.registration.scope)).length>1){e.ports[0]?.postMessage({applied:false});return}await self.skipWaiting();e.ports[0]?.postMessage({applied:true})})())});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(names=>Promise.all(names.filter(n=>n.startsWith('yu-study-shell-')&&n!==cache).map(n=>caches.delete(n)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||!e.request.url.startsWith(self.registration.scope))return;const url=e.request.mode==='navigate'?new URL('index.html',self.registration.scope).href:e.request.url;if(files.includes(url))e.respondWith(caches.open(cache).then(c=>c.match(url)).then(r=>r||fetch(e.request)));});`);
   console.log('Built',files.length,'static resources:',cache);

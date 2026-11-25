@@ -86,8 +86,9 @@ try{
     });
   }
   async function choose(files){
+    if(await page.locator('#bring').count())await page.locator('#bring').click();
     const picking=page.waitForEvent('filechooser');
-    await page.locator('#pdf-files').tap();
+    if(await page.locator('#bring').count())await page.locator('#manual-one').tap();else await page.locator('#pdf-files').tap();
     const chooser=await picking;
     assert.equal(await chooser.element().evaluate(el=>el.isConnected),true);
     // Let the native interaction outlive the activation handler.
@@ -98,7 +99,7 @@ try{
   async function closeImport(){
     await page.locator('#modal form button').click();
     await page.locator('#modal').waitFor({state:'hidden'});
-    await page.waitForFunction(()=>document.querySelector('#pdf-files')?.value==='');
+    await page.waitForFunction(()=>!(document.querySelector('#pdf-files')?.value));
   }
   async function registered(count){
     await page.locator('#modal').waitFor({state:'hidden'});
@@ -124,7 +125,7 @@ try{
   await page.getByRole('alert').filter({hasText:'이미 등록된 PDF'}).waitFor();
   assert.equal((await saved()).documents.length,2);
   await closeImport();
-  assert.equal(await page.locator('#pdf-files').inputValue(),'');
+  assert.equal(await page.evaluate(()=>document.querySelector('#pdf-files')?.value||''),'');
   console.log(engine+': duplicate rejected');
 
   await choose({name:'empty.pdf',mimeType:'application/pdf',buffer:Buffer.alloc(0)});

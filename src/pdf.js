@@ -6,7 +6,10 @@ async function pdfEngine(){
   engine.GlobalWorkerOptions.workerSrc=new URL('pdf.worker.min.mjs',base).href;
   return engine;
 }
-export async function batchWorker(){return (await pdfEngine()).PDFWorker.create({})}
+export async function batchWorker(){
+  const worker=(await pdfEngine()).PDFWorker.create({});
+  try{await worker.promise;return worker}catch(error){worker.destroy();throw error}
+}
 export async function openPdf(blob,worker){
   await pdfEngine();
   const data=blob instanceof Uint8Array?blob:new Uint8Array(await blob.arrayBuffer());
@@ -17,7 +20,8 @@ export async function probePdf(data,worker){
   const pdf=await openPdf(data,worker);
   try{
     const page=await pdf.getPage(1),lines=pageText(page.getViewport({scale:1}),await textContent(page));
-    const heading=lines.filter(l=>l.y<.21 && !numberPrefix.test(l.str)).slice(0,28).map(l=>l.str).join(' ');
+    const first=Math.min(.21,...markerLines(lines,300).filter(l=>l.x<.35).map(l=>l.y));
+    const heading=lines.filter(l=>l.y<first-.001).sort((a,b)=>a.y-b.y||a.x-b.x).slice(0,40).map(l=>l.str).join(' ');
     const sample=lines.slice(0,320).map(l=>l.str).join(' ');
     const explicitCount=heading.match(/(?:총|전체)\s*(\d{1,3})\s*문항/);
     return {heading,sample,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};

@@ -1,8 +1,9 @@
 import {state,get,change} from './db.js';
+import {answerMatch,studyStates,studyState,studyStats,setStudy} from './exam-catalog.js';
 import {record,stats} from './model.js';
 import {regionRecord,protectedRegion} from './region-records.js';
 import {openPdf,paint,detect} from './pdf.js';
-import {$,esc,notice,guard,on,action} from './ui.js';
+import {$,esc,notice,guard,on,action,options} from './ui.js';
 import {download} from './backup.js';
 // Older archives can keep validated rectangles only on the question.
 function savedRegions(doc,archive){
@@ -14,21 +15,37 @@ function savedRegions(doc,archive){
  }
  return map;
 }
-export async function reader(id,alive,questionNumber){
- const s=await state(),d=s.documents.find(x=>x.id===id);if(!d||!alive())return;
+export async function reader(id,alive,questionNumber,s,openDoc){
+ s??=await state();const d=s.documents.find(x=>x.id===id);if(!d||!alive())return;
  const blob=await get('files',d.hash),pdf=await openPdf(blob);if(!alive()){await pdf.destroy();return}
- const focus=s.questions.find(q=>q.doc===id && q.number===questionNumber&&q.regions.length) || d.detected?.[questionNumber];
- let page=Math.min(focus?.regions?.[0]?.page||d.page||1,pdf.numPages),zoom=1,regionN=questionNumber||1,edit=false,busy=false,session=d.session,detected=savedRegions(d,s),sharedRange=null,selected=new Set(),rev=0;
+ const automatic=d.externalRegions?await get('meta','auto-regions:'+d.id+':'+d.hash):null;
+ if(!alive()){await pdf.destroy();return}
+ const baseDoc=x=>automatic?{...x,detected:{...automatic,...x.detected}}:x;
+ const focus=s.questions.find(q=>q.doc===id && q.number===questionNumber&&q.regions.length) || baseDoc(d).detected?.[questionNumber];
+ let page=Math.min(focus?.regions?.[0]?.page||d.page||1,pdf.numPages),zoom=1,regionN=questionNumber||1,edit=false,busy=false,session=d.session,detected=savedRegions(baseDoc(d),s),sharedRange=null,selected=new Set(),rev=0;
  const app=$('#app');app.innerHTML='<h1>'+esc(d.title)+'</h1><div class="workspace"><div><div class="row">'+action('prev','이전')+'<label>페이지 <input id="pg" type="number" min="1" max="'+pdf.numPages+'" value="'+page+'"></label><span>/ '+pdf.numPages+'</span>'+action('next','다음')+action('zoom','확대')+action('original','원본 저장')+'</div><div class="sheet"><div class="paper"><canvas></canvas></div></div></div><div><details class="box" open><summary>오답 등록</summary><label>풀이 회차 <select id="sessions"></select></label>'+action('newSession','새 회차')+'<div class="numbers"></div>'+action('save','선택 저장','primary')+'</details><details class="box"><summary>문항 영역 검수</summary><label>문항 번호 <input id="rn" type="number" min="1" max="'+d.count+'" value="1"></label>'+action('auto','자동 인식')+action('drag','영역 그리기')+'<details class="shared-edit"><summary>공통 지문 지정</summary><label>시작 문항<input id="shared-first" type="number" min="1" max="'+d.count+'" value="'+regionN+'"></label><label>끝 문항<input id="shared-last" type="number" min="1" max="'+d.count+'" value="'+Math.min(d.count,regionN+1)+'"></label>'+action('shared-drag','이 문항들의 공통 지문 그리기')+'</details>'+action('whole','현재 페이지 추가')+action('undoReg','마지막 영역 제거')+action('resetReg','영역 초기화')+'<p class="sub" id="reginfo"></p></details></div></div>';
+ const answer=answerMatch(d,s.documents),isPaper=d.type!=='정답지',paperStats=studyStats(s).get(d.id);
+ const column=app.querySelector('.workspace > div:last-child');
+ if(!isPaper)column.innerHTML='<p class="box">정답지 · '+esc(d.answerEdition||'판본 미확인')+'</p>';
+ else{
+   const tools=document.createElement('details');tools.className='box';tools.innerHTML='<summary>시험지 풀이·복습 상태</summary><label>상태<select id="reader-study">'+options(studyStates,studyState(d,paperStats))+'</select></label><p class="sub" id="reader-stat"></p>';
+   column.append(tools);
+   function describe(doc,counts){$('#reader-stat').textContent='풀이 '+(counts?.solved.size||0)+'회 · 마지막 풀이 '+(counts?.lastSolved?.slice(0,10)||'없음')+' · 마지막 복습 '+([doc.lastReview||'',counts?.lastReview||''].sort().at(-1)?.slice(0,10)||'없음')+' · 고유 오답 '+(counts?.wrong.size||0)+' · 누적 '+(counts?.attempts||0)}
+   describe(d,paperStats);
+   on('reader-study',async e=>{const status=e.target.value;await saveDoc((doc,v)=>setStudy(v,doc,status));const v=await state();if(alive())describe(v.documents.find(doc=>doc.id===id),studyStats(v).get(id))},'change');
+   if(answer.answers.length){const b=document.createElement('button');b.textContent='정답지 열기'+(answer.answers[0].answerEdition?' · '+answer.answers[0].answerEdition:'');b.id='open-answer';b.onclick=guard(()=>openDoc(answer.answers[0].id));app.querySelector('.workspace .row').append(b)}
+   else if(answer.review){const hint=document.createElement('small');hint.textContent='정답지 연결 검토 · 자료 관리에서 정답지를 지정할 수 있습니다.';tools.append(hint)}
+ }
+ const lifetime=new AbortController();
  async function saveDoc(fn){await change(v=>{fn(v.documents.find(x=>x.id===id),v)})}
  async function panel(){const v=await state();if(!alive())return;const list=v.sessions.filter(a=>a.doc===id);$('#sessions').innerHTML=list.map((a,i)=>'<option value="'+esc(a.id)+'" '+(a.id===session?'selected':'')+'>'+ (i+1)+'회 · '+esc(a.date.slice(0,10))+'</option>').join('');selected=new Set(v.events.filter(e=>e.session===session).map(e=>e.number));const counts=stats(v);$('.numbers').innerHTML=Array.from({length:d.count},(_,i)=>{const n=i+1,q=v.questions.find(q=>q.doc===id&&q.number===n),count=counts.get(id+'#'+n)||0;return '<button data-n="'+n+'" aria-pressed="'+selected.has(n)+'" class="'+(selected.has(n)?'selected':'')+'">'+String(n).padStart(2,'0')+'<small>'+(selected.has(n)?'✓ ':'')+(count?count+'회':'')+(q?.status==='숙지 완료'?' ✔':'')+'</small></button>'}).join('')}
- function overlay(){if(!alive())return;const p=$('.paper'),rs=detected[regionN]?.regions||[];p.querySelectorAll('.rect').forEach(x=>x.remove());for(const r of rs.filter(r=>r.page===page)){const el=document.createElement('i');el.className='rect';Object.assign(el.style,{left:r.x*100+'%',top:r.y*100+'%',width:r.w*100+'%',height:r.h*100+'%'});p.append(el)}$('#reginfo').textContent=regionN+'번 · 영역 '+rs.length+'개 · '+(detected[regionN]?.reviewed?'수동 지정':'검수 필요')}
- async function draw(){const token=++rev,cv=document.createElement('canvas');await paint(pdf,page,cv,1100*zoom);if(!alive()||token!==rev)return;$('.paper canvas').replaceWith(cv);$('.paper').style.width=zoom*100+'%';$('#pg').value=page;overlay();await saveDoc(x=>{x.page=page;x.opened=new Date().toISOString()})}
+ function overlay(){if(!alive()||!isPaper)return;const p=$('.paper'),rs=detected[regionN]?.regions||[];p.querySelectorAll('.rect').forEach(x=>x.remove());for(const r of rs.filter(r=>r.page===page)){const el=document.createElement('i');el.className='rect';Object.assign(el.style,{left:r.x*100+'%',top:r.y*100+'%',width:r.w*100+'%',height:r.h*100+'%'});p.append(el)}$('#reginfo').textContent=regionN+'번 · 영역 '+rs.length+'개 · '+(detected[regionN]?.reviewed?'수동 지정':'검수 필요')}
+ async function draw(){const token=++rev,cv=document.createElement('canvas');await paint(pdf,page,cv,1100*zoom);if(!alive()||token!==rev){cv.width=cv.height=1;return}const old=$('.paper canvas');old.replaceWith(cv);old.width=old.height=1;$('.paper').style.width=zoom*100+'%';$('#pg').value=page;overlay();await saveDoc(x=>{x.page=page;x.opened=new Date().toISOString()})}
  async function go(n){page=Math.min(pdf.numPages,Math.max(1,Number(n)||1));await draw()}
- async function updateRegions(fn){await saveDoc((x,v)=>{const map=savedRegions(x,v),row=map[regionN]||{regions:[]};fn(row.regions);map[regionN]={...row,reviewed:true,text:'',regions:row.regions};x.detected=map;const q=v.questions.find(q=>q.doc===id&&q.number===regionN);if(q)Object.assign(q,map[regionN]);detected=map});overlay()}
- async function scan(){if(busy)return;busy=true;notice('문항 위치를 분석하고 있습니다.');try{const map=await detect(pdf,d.count);await saveDoc((x,v)=>{const rows=savedRegions(x,v);for(const [key,row] of Object.entries(map)){if(!protectedRegion(rows[key])){rows[key]=row;const q=v.questions.find(q=>q.doc===id&&q.number===+key);if(q)Object.assign(q,row)}}x.detected=rows;x.scanned=true;detected=rows});overlay();if(alive())notice(Object.keys(map).length+'개 문항을 인식했습니다. 영역을 확인하세요.')}finally{busy=false}}
- $('.numbers').onclick=e=>{const b=e.target.closest('[data-n]');if(!b)return;const n=+b.dataset.n;selected.has(n)?selected.delete(n):selected.add(n);b.classList.toggle('selected',selected.has(n));b.setAttribute('aria-pressed',selected.has(n));regionN=n;$('#rn').value=n;overlay()};
- on('save',async()=>{const nums=[...selected];await saveDoc((x,v)=>{record(v,x,session,nums);for(const q of v.questions.filter(q=>q.doc===id)){const crop=regionRecord(x,q);if(crop!==q)Object.assign(q,crop)}});await panel();notice('오답을 저장했습니다.')});
+ async function updateRegions(fn){await saveDoc((x,v)=>{const map=savedRegions(x,v),row=map[regionN]||automatic?.[regionN]&&structuredClone(automatic[regionN])||{regions:[]};fn(row.regions);map[regionN]={...row,reviewed:true,text:'',regions:row.regions};x.detected=map;const q=v.questions.find(q=>q.doc===id&&q.number===regionN);if(q)Object.assign(q,map[regionN]);detected={...automatic,...map}});overlay()}
+ async function scan(){if(busy)return;busy=true;notice('문항 위치를 분석하고 있습니다.');try{const map=await detect(pdf,d.count,{signal:lifetime.signal});await saveDoc((x,v)=>{const rows=savedRegions(x,v);for(const [key,row] of Object.entries(map)){if(!protectedRegion(rows[key])){rows[key]=row;const q=v.questions.find(q=>q.doc===id&&q.number===+key);if(q)Object.assign(q,row)}}x.detected=rows;x.scanned=true;detected=rows});overlay();if(alive())notice(Object.keys(map).length+'개 문항을 인식했습니다. 영역을 확인하세요.')}finally{busy=false}}
+ if(isPaper)$('.numbers').onclick=e=>{const b=e.target.closest('[data-n]');if(!b)return;const n=+b.dataset.n;selected.has(n)?selected.delete(n):selected.add(n);b.classList.toggle('selected',selected.has(n));b.setAttribute('aria-pressed',selected.has(n));regionN=n;$('#rn').value=n;overlay()};
+ on('save',async()=>{const nums=[...selected];await saveDoc((x,v)=>{record(v,x,session,nums);const attempt=v.sessions.find(a=>a.id===session);if(attempt&&!attempt.solvedAt)attempt.solvedAt=new Date().toISOString();for(const q of v.questions.filter(q=>q.doc===id)){const crop=regionRecord(baseDoc(x),q);if(crop!==q)Object.assign(q,crop)}});await panel();notice('오답을 저장했습니다.')});
  on('sessions',async e=>{session=e.target.value;await saveDoc(x=>{x.session=session});await panel()},'change');
  on('newSession',async()=>{session=crypto.randomUUID();await saveDoc((x,v)=>{v.sessions.push({id:session,doc:id,date:new Date().toISOString()});x.session=session});await panel()});
  on('prev',()=>go(page-1));on('next',()=>go(page+1));on('pg',e=>go(e.target.value),'change');on('zoom',async()=>{zoom=zoom===1?1.5:zoom===1.5?2:1;await draw()});on('original',()=>download(blob,d.title+'.pdf'));
@@ -44,12 +61,12 @@ export async function reader(id,alive,questionNumber){
    await saveDoc((x,v)=>{
      const map=savedRegions(x,v),questions=new Map(v.questions.filter(q=>q.doc===id).map(q=>[q.number,q]));
      for(let n=first;n<=last;n++){
-       const row=map[n]||{regions:[],text:''};
+       const row=map[n]||automatic?.[n]&&structuredClone(automatic[n])||{regions:[],text:''};
        row.regions=[...row.regions.filter(r=>!(r.shared&&r.page===area.page&&Math.abs(r.x-area.x)<.00001&&Math.abs(r.y-area.y)<.00001&&Math.abs(r.w-area.w)<.00001&&Math.abs(r.h-area.h)<.00001)),{...area,shared:true}];
        row.reviewed=true;map[n]=row;
        if(questions.has(n))Object.assign(questions.get(n),row);
      }
-     x.detected=detected=map;
+     x.detected=map;detected={...automatic,...map};
    });
    if(alive()){drawing(false);overlay();notice(first+'~'+last+'번에 공통 지문을 연결했습니다.')}
  }
@@ -59,5 +76,7 @@ export async function reader(id,alive,questionNumber){
    const area={page,x:Math.min(a,x),y:Math.min(b,y),w,h};
    if(sharedRange)await addPassage(area,sharedRange);else await updateRegions(rs=>rs.push(area));
  }});
- $('#rn').value=regionN;await panel();await draw();if(!d.scanned&&alive())guard(scan)();return ()=>pdf.destroy()
+ if(isPaper){$('#rn').value=regionN;await panel()}await draw();
+ if(isPaper&&!d.scanned&&!d.analysisState&&alive())guard(scan)();
+ return ()=>{lifetime.abort();const canvas=paper.querySelector('canvas');if(canvas)canvas.width=canvas.height=1;pdf.destroy().catch(()=>{})}
 }
