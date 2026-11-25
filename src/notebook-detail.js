@@ -1,6 +1,6 @@
 import {change,get} from './db.js';
 import {openPdf,paint} from './pdf.js';
-import {assignTheme,setStatus,statuses,removeEvents,restoreEvents} from './notebook-model.js';
+import {assignTheme,setStatus,statuses,removeEvents,trashEntries,changeTrash} from './notebook-model.js';
 import {$,esc,modal,on,notice,guard,mayLeaveModal} from './ui.js';
 import {compareRegions} from './region-ui.js';
 
@@ -22,19 +22,50 @@ export function confirmRemoval(events, refresh){
 }
 
 export function openTrash(archive,refresh){
-  const docs=new Map(archive.documents.map(d=>[d.id,d.title]));
-  const questions=new Map(archive.questions.map(q=>[q.id,q]));
-  const batches=archive.removedMistakes||[];
-  const section=modal('<h2>오답 휴지통</h2>'+ (batches.length?batches.map(batch=>{
-    const ids=[...new Set(batch.events.map(e=>e.q))], first=questions.get(ids[0]);
-    const title=(docs.get(first?.doc)||'시험지')+' '+(first?.number||'')+'번';
-    return '<article class="item"><strong>'+esc(title)+(ids.length>1?' 외 '+(ids.length-1)+'문항':'')+'</strong><p>'+esc(new Date(batch.date).toLocaleDateString('ko-KR'))+' · 문항 '+ids.length+'개 · 이력 '+batch.events.length+'회</p><button data-restore="'+esc(batch.id)+'">복구</button></article>';
-  }).join(''):'<p>휴지통이 비었습니다.</p>'));
-  section.querySelectorAll('[data-restore]').forEach(button=>button.onclick=guard(async()=>{
-    await change(s=>{restoreEvents(s,button.dataset.restore)});close();await refresh();notice('오답 기록을 복구했습니다.');
-  }));
+  const docs=new Map(archive.documents.map(d=>[d.id,d.title])),questions=new Map(archive.questions.map(q=>[q.id,q]));
+  const entries=trashEntries(archive),groups=new Map(),selected=new Set();
+  for(const row of entries){
+    const id=row.event.q;
+    if(!groups.has(id))groups.set(id,[]);
+    groups.get(id).push(row);
+  }
+  async function apply(items,operation){
+    await change(s=>{changeTrash(s,items.map(x=>x.key),operation)});
+    close();await refresh();notice(operation==='purge'?'선택한 오답 이력을 영구 삭제했습니다.':'오답 기록을 복원했습니다.');
+  }
+  function purge(items){
+    const n=new Set(items.map(x=>x.event.q)).size;
+    modal('<h2>오답 이력 영구 삭제</h2><p>문항 <b>'+n+'개</b>의 오답 이력 <b>'+items.length+'회</b>를 영구 삭제합니다. 앱에서 다시 복원할 수 없습니다.</p><p class="sub">원본 시험지와 문항 영역은 보관됩니다.</p><div class="row"><button id="cancel-purge" autofocus>취소</button><button id="confirm-purge" class="danger">영구 삭제</button></div>',{critical:true});
+    on('cancel-purge',draw);on('confirm-purge',()=>apply(items,'purge'));
+  }
+  function draw(){
+    const section=modal('<div class="toolbar"><h2>오답 휴지통</h2><button id="empty-trash" class="danger" '+(entries.length?'':'disabled')+'>휴지통 비우기</button></div>'+
+      (entries.length?'<div class="row"><button id="restore-everything">전체 복원</button><button id="restore-selected">선택 복원</button><button id="purge-selected" class="danger">선택 영구 삭제</button></div>'+
+        [...groups].map(([id,items])=>{
+          const q=questions.get(id),title=(docs.get(q?.doc)||'시험지')+' · '+(q?.number??items[0].event.number)+'번';
+          return '<article class="item"><label class="tick"><input type="checkbox" data-trash-pick="'+esc(id)+'" '+(selected.has(id)?'checked':'')+'> <strong>'+esc(title)+'</strong></label>'+
+            '<p class="sub">오답 이력 '+items.length+'회</p><div class="row"><button data-restore="'+esc(id)+'">복원</button><button class="danger" data-purge="'+esc(id)+'">영구 삭제</button></div></article>';
+        }).join(''):'<p>휴지통이 비었습니다.</p>'));
+    if(!entries.length)return;
+    function update(){for(const id of ['restore-selected','purge-selected'])$('#'+id,section).disabled=!selected.size}
+    function picked(){return entries.filter(row=>selected.has(row.event.q))}
+    section.onchange=e=>{
+      const input=e.target.closest('[data-trash-pick]');if(!input)return;
+      if(input.checked)selected.add(input.dataset.trashPick);else selected.delete(input.dataset.trashPick);update();
+    };
+    section.onclick=guard(e=>{
+      const b=e.target.closest('button');if(!b)return;
+      if(b.dataset.restore)return apply(groups.get(b.dataset.restore),'restore');
+      if(b.dataset.purge)return purge(groups.get(b.dataset.purge));
+      if(b.id==='empty-trash')return purge(entries);
+      if(b.id==='restore-everything')return apply(entries,'restore');
+      if(b.id==='restore-selected')return apply(picked(),'restore');
+      if(b.id==='purge-selected')return purge(picked());
+    });
+    update();
+  }
+  draw();
 }
-
 export async function renderRegions(container, row, width=1100){
   if(!row.question.regions.length){container.textContent='영역 미지정 · 원본에서 문항 영역을 지정하세요.';return}
   const pdf=await openPdf(await get('files',row.doc.hash));

@@ -1,5 +1,6 @@
 import {state,get,change,hash} from './db.js';
 import {validate} from './model.js';
+import {reconcilePurged} from './notebook-model.js';
 let loaded;
 async function zip(){if(!loaded)loaded=new Promise((res,rej)=>{const s=document.createElement('script');s.src=new URL('vendor/jszip.min.js',document.baseURI);s.onload=()=>res(window.JSZip);s.onerror=()=>{loaded=null;rej(Error('백업 모듈을 불러오지 못했습니다.'))};document.head.append(s)});return loaded}
 export function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000)}
@@ -10,4 +11,4 @@ export async function restore(file){const Zip=await zip(),z=await Zip.loadAsync(
  const m=JSON.parse(await (await read('manifest.json')).text()),meta=await read('archive.json');if(m.format!=='yu-study'||m.version!==1||await hash(meta)!==m.metadataHash)throw Error('백업 형식 또는 체크섬 오류');const s=validate(JSON.parse(await meta.text())),keys=[...new Set(s.documents.map(d=>d.hash))];if(!Array.isArray(m.files)||m.files.length!==keys.length||keys.some(k=>!m.files.includes(k)))throw Error('파일 목록 불일치');
  const files=[];for(const k of keys){const blob=await read('files/'+k);if(await hash(blob)!==k)throw Error('손상된 PDF');files.push([k,new Blob([blob],{type:'application/pdf'})])}
  if(!confirm('PDF '+s.documents.length+'건과 오답 이력 '+s.events.length+'건으로 현재 자료를 교체할까요? 현재 자료는 먼저 백업해 두세요.'))return false;
- await change(()=>s,files,true);return true}
+ await change(current=>reconcilePurged(s,current.purgedAttempts),files,true);return true}

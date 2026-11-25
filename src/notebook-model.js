@@ -151,10 +151,39 @@ export function removeEvents(archive, expected) {
   (archive.removedMistakes ||= []).unshift({id:crypto.randomUUID(),date:new Date().toISOString(),events:removed});
 }
 
-export function restoreEvents(archive, batchId) {
-  const batch=archive.removedMistakes?.find(b=>b.id===batchId);
-  if(!batch)return;
-  const active=new Set(archive.events.map(e=>e.id));
-  for(const event of batch.events)if(!active.has(event.id)){archive.events.push(event);active.add(event.id)}
-  archive.removedMistakes=archive.removedMistakes.filter(b=>b.id!==batchId);
+// A session can be unmarked and marked again. Only the removed occurrence is
+// suppressed when an older archive is brought back to this device.
+export function attemptKey(event){
+  return JSON.stringify([event.id,event.q,event.instance||event.date||'']);
+}
+export function trashEntries(archive){
+  return (archive.removedMistakes||[]).flatMap(batch=>batch.events.map(event=>({
+    key:JSON.stringify([batch.id,attemptKey(event)]),batch:batch.id,date:batch.date,event
+  })));
+}
+export function reconcilePurged(archive,previous=[]){
+  const keys=new Set([...previous,...(archive.purgedAttempts||[])]);
+  if(!keys.size)return archive;
+  archive.purgedAttempts=[...keys];
+  archive.events=archive.events.filter(e=>!keys.has(attemptKey(e)));
+  archive.removedMistakes=(archive.removedMistakes||[]).map(batch=>({...batch,
+    events:batch.events.filter(e=>!keys.has(attemptKey(e)))})).filter(batch=>batch.events.length);
+  return archive;
+}
+export function changeTrash(archive,expected,operation){
+  if(!['restore','purge'].includes(operation))throw Error('휴지통 작업을 확인하세요.');
+  const selected=new Set(expected),entries=trashEntries(archive).filter(row=>selected.has(row.key));
+  if(entries.length!==selected.size)throw Error('휴지통 내용이 바뀌었습니다. 다시 열어 확인하세요.');
+  const active=new Set(archive.events.map(e=>e.id)),purged=new Set(archive.purgedAttempts||[]);
+  for(const {event} of entries){
+    const key=attemptKey(event);
+    if(operation==='purge')purged.add(key);
+    else if(!purged.has(key)&&!active.has(event.id)){archive.events.push(event);active.add(event.id)}
+  }
+  archive.removedMistakes=(archive.removedMistakes||[]).map(batch=>({...batch,events:
+    batch.events.filter(e=>!selected.has(JSON.stringify([batch.id,attemptKey(e)])))})).filter(batch=>batch.events.length);
+  if(operation==='purge')reconcilePurged(archive,[...purged]);
+}
+export function restoreEvents(archive,batchId){
+  changeTrash(archive,trashEntries(archive).filter(e=>e.batch===batchId).map(e=>e.key),'restore');
 }

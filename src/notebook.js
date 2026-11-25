@@ -48,7 +48,7 @@ export function mountNotebook(app,archive,hooks){
     '<details id="group-panel"><summary>분류별 현황</summary><label>분류 기준<select id="group-type"></select></label><div class="facet-list"></div></details></div>'+
     '<div class="notebook-summary"><p class="notebook-counts"></p><div class="row">'+button('edit-notebook','편집')+button('print','A4 PDF 출력','primary')+'</div></div><div class="bulk-bar" hidden><span id="selection-count"></span>'+button('select-all','현재 목록 전체 선택')+button('select-none','선택 해제')+button('bulk-theme','테마 지정')+button('bulk-master','숙지 완료')+button('bulk-print','선택 PDF')+button('bulk-regions','영역 재분석')+button('bulk-remove','선택 제거','danger')+'</div>'+
     '<div class="notebook-list"></div><div class="row pager" hidden>'+button('nb-prev','이전')+'<span id="nb-page"></span>'+button('nb-next','다음')+'</div>'+
-    '<div class="notebook-foot">'+button('mistake-trash','오답 휴지통'+(archive.removedMistakes?.length?' ('+archive.removedMistakes.length+')':''))+analysisControls()+'</div>';
+    '<div class="notebook-foot">'+button('mistake-trash','오답 휴지통'+(archive.removedMistakes?.length?' ('+new Set(archive.removedMistakes.flatMap(b=>b.events.map(e=>e.q))).size+')':''))+analysisControls()+'</div>';
 
   const filterPanel=$('#filters'),groupPanel=$('#group-panel'),themesPanel=$('.theme-options');
   const field=$('#f-search'),themeField=$('#f-theme-search'),grid=$('.filter-grid'),cards=$('.notebook-list');

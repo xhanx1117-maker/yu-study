@@ -16,7 +16,7 @@ export function record(s,doc,session,numbers){
  s.events=s.events.filter(e=>e.session!==session||selected.has(e.number));
  for(const number of selected){const id=doc.id+'#'+number;
  let q=s.questions.find(x=>x.id===id);if(!q){q={id,doc:doc.id,number,regions:[],theme:null,secondary:[],status:'미복습',memo:''};s.questions.push(q)}
- if(!s.events.some(e=>e.session===session&&e.q===id)){s.events.push({id:session+'#'+number,q:id,session,number,date});if(q.status==='숙지 완료')q.status='복습 필요'}
+ if(!s.events.some(e=>e.session===session&&e.q===id)){s.events.push({id:session+'#'+number,q:id,session,number,date,instance:crypto.randomUUID()});if(q.status==='숙지 완료')q.status='복습 필요'}
  }}
 export function stats(s){const count=new Map();for(const e of s.events)count.set(e.q,(count.get(e.q)||0)+1);return count}
 export function infer(name){return {subject:subjects.find(x=>name.includes(x))||'미분류',year:name.match(/(?:19|20)\d{2}/)?.[0]||'',exam:name.match(/(?:국가직|지방직)\s*[79]급|서울시/)?.[0].replace(/(직)\s*/,'$1 ')||''}}
@@ -35,6 +35,7 @@ export function validate(s){if(s?.version!==1)throw Error('지원하지 않는 �
  for(const r of x.regions)if(!Number.isInteger(r.page)||r.page<1||![r.x,r.y,r.w,r.h].every(Number.isFinite)||r.x<0||r.y<0||r.w<=0||r.h<=0||r.x+r.w>1.00001||r.y+r.h>1.00001)throw Error('문항 좌표 오류')}
  for(const e of s.events)if(!q(e.q)||!s.sessions.some(a=>a.id===e.session&&a.doc===q(e.q).doc))throw Error('오답 연결 오류');
  for(const r of s.reviews)if(!q(r.q))throw Error('복습 연결 오류');
+ if(s.purgedAttempts!==undefined&&(!Array.isArray(s.purgedAttempts)||s.purgedAttempts.some(k=>typeof k!=='string')))throw Error('영구 삭제 이력 형식 오류');
  if(s.removedMistakes!==undefined){
    if(!Array.isArray(s.removedMistakes))throw Error('오답 휴지통 형식 오류');
    for(const batch of s.removedMistakes){

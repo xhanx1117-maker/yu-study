@@ -177,7 +177,7 @@ try{
   assert.equal(await page.locator('#print-status').textContent(),'2문항 · 1쪽');await close();
   await click('bulk-print');assert.equal(await page.locator('#print-mode').inputValue(),'one');await close();
   await click('bulk-remove');assert.match(await page.locator('#modal section p').textContent(),/문항 2개의 오답 이력 2회/);
-  await click('confirm-remove');await hasCount(5);await click('mistake-trash');await page.locator('[data-restore]').first().click();await hasCount(7);
+  await click('confirm-remove');await hasCount(5);await click('mistake-trash');await click('restore-everything');await hasCount(7);
   await detail('law#1');await page.getByText('오답 이력 2회',{exact:true}).click();
   await page.locator('[data-event="law-repeat#1"]').click();await click('confirm-remove');
   await page.waitForFunction(()=>document.querySelector('.notebook-counts')?.textContent.includes('반복 0문항'));
@@ -185,7 +185,7 @@ try{
   await nav('자료실');await page.locator('[data-doc="law"]').click();await page.locator('[data-n="1"]').waitFor();
   assert.equal(await page.locator('[data-n="1"]').getAttribute('aria-pressed'),'false');
   await nav('오답노트');await tab('행정법');await click('mistake-trash');await page.locator('[data-restore]').first().click();
-  await hasCount(8);await click('mistake-trash');await page.locator('[data-restore]').first().click();
+  await hasCount(8);
   await page.waitForFunction(()=>document.querySelector('.notebook-counts')?.textContent.includes('반복 1문항'));
   await tab('국어');await make('two','print',['answers']);const shared=await saveAndInspect('reading');
   assert.equal(shared.length,2);assert.equal(shared.flatMap(p=>p.orange).length,1,'shared Korean bitmap once');

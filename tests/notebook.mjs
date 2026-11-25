@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {initial,record,stats,subjects,validate} from '../src/model.js';
-import {notebookIndex,filterRows,emptyFilters,groupCounts,changeDocumentSubject,assignTheme,removeEvents,restoreEvents,setStatus} from '../src/notebook-model.js';
+import {notebookIndex,filterRows,emptyFilters,groupCounts,changeDocumentSubject,assignTheme,removeEvents,restoreEvents,setStatus,trashEntries,changeTrash,reconcilePurged} from '../src/notebook-model.js';
 
 function fixture() {
   const s=initial();
@@ -57,4 +57,27 @@ test('large legacy collection keeps all filter matches, numeric theme order and 
   assert.equal(ordered[0].linked[0].id,'two');assert.equal(ordered.at(-1).linked[0].id,'ten');
   assert.equal(filterRows(idx.rows,{...base,sort:'recent'})[0].question.number,64);
   assert.equal(filterRows(idx.rows,{...base,search:'지문 64'}).length,20);
+});
+
+test('permanent removal targets exact archived occurrences and an older transfer cannot reinstate them',()=>{
+  const s=fixture(),legacy=s.events[0];delete legacy.instance;
+  const freshBackup=structuredClone(s),unrelated=s.events[2],q=s.questions[0];
+  q.memo='retained';setStatus(s,[q.id],'부분 이해');
+  removeEvents(s,[legacy,unrelated]);
+  const oldTrash=structuredClone(s),items=trashEntries(s),target=items.find(i=>i.event.id===legacy.id);
+  const metadata=structuredClone([s.documents,s.books,s.questions,s.reviews]);
+  changeTrash(s,[target.key],'purge');
+  assert.deepEqual([s.documents,s.books,s.questions,s.reviews],metadata);
+  assert.equal(trashEntries(s).length,1);assert.throws(()=>changeTrash(s,[target.key],'restore'));
+  for(const stale of [freshBackup,oldTrash]){
+    const incoming=reconcilePurged(stale,s.purgedAttempts);
+    assert.ok(!incoming.events.some(e=>e.id===legacy.id));
+    assert.ok(!trashEntries(incoming).some(r=>r.event.id===legacy.id));
+    validate(incoming);
+  }
+  changeTrash(s,trashEntries(s).map(e=>e.key),'restore');
+  record(s,s.documents[0],legacy.session,[legacy.number]);
+  assert.ok(s.events.find(e=>e.id===legacy.id).instance);
+  assert.equal(reconcilePurged(s,s.purgedAttempts).events.length,8);
+  assert.deepEqual(validate(JSON.parse(JSON.stringify(s))).purgedAttempts,s.purgedAttempts);
 });
