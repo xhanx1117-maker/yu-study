@@ -1,12 +1,13 @@
 import {get,change} from './db.js';
 import {detect,openPdf,paint} from './pdf.js';
 import {regionRecord,regionStamp,protectedRegion,applyRegionChanges} from './region-records.js';
-import {$,esc,modal,notice,on,guard} from './ui.js';
+import {$,esc,modal,notice,on,guard,mayLeaveModal} from './ui.js';
 
 export async function compareRegions(rows,{refresh,openOriginal}){
   if(!rows.length)return;
+  const changed=new Set();
   const section=modal('<h2>문항 영역 재분석</h2><p id="region-status" role="status">원본 PDF를 확인하고 있습니다.</p>'+
-    '<button id="region-stop">분석 취소</button><div id="region-review"></div>');
+    '<button id="region-stop">분석 취소</button><div id="region-review"></div>',{isDirty:()=>changed.size>0});
   const dialog=$('#modal'),controller=new AbortController(),{signal}=controller;
   let current=0,revision=0;
   dialog.addEventListener('close',()=>{controller.abort();revision++},{once:true});
@@ -63,8 +64,13 @@ export async function compareRegions(rows,{refresh,openOriginal}){
     }finally{await pdf.destroy()}
   }
   on('region-which',e=>{current=Number(e.target.value);return show()},'change');
-  on('region-pick',e=>{entries[current].selected=e.target.checked;count()},'change');
-  on('region-manual',()=>{const {row}=entries[current];dialog.close();return openOriginal(row.doc.id,row.question.number)});
+  on('region-pick',e=>{
+    const entry=entries[current];entry.selected=e.target.checked;
+    // Only a usable automatic proposal is preselected. Viewing a different row is navigation.
+    if(entry.selected)changed.delete(entry);else changed.add(entry);
+    count();
+  },'change');
+  on('region-manual',()=>{if(!mayLeaveModal())return;const {row}=entries[current];dialog.close();return openOriginal(row.doc.id,row.question.number)});
   on('region-apply',async()=>{
     const selected=entries.filter(e=>e.selected);
     await change(s=>{applyRegionChanges(s,selected.map(({row,next,stamp})=>({docId:row.doc.id,id:row.id,hash:row.doc.hash,next,stamp})))});

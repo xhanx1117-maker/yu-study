@@ -11,28 +11,55 @@ function values(section){
 export function markModalSaved(){if(dialogPolicy)dialogPolicy.initial=values(dialogPolicy.section)}
 export function mayLeaveModal(){
   const p=dialogPolicy;
-  return !p?.protectEdits || values(p.section)===p.initial || confirm('저장하지 않은 변경 사항을 버리고 닫을까요?');
+  const changed=p?.isDirty?p.isDirty():p?.protectEdits&&values(p.section)!==p.initial;
+  return !changed || confirm('저장하지 않은 변경 사항을 버리고 닫을까요?');
 }
 function bindDialog(d){
-  const outside=e=>{
-    const r=d.getBoundingClientRect();
-    return e.target===d && (e.clientX<r.left || e.clientX>=r.right || e.clientY<r.top || e.clientY>=r.bottom);
-  };
+  const backdrop=d.querySelector('.modal-backdrop');
   function dismiss(implicit){
     if(!d.open || dialogPolicy?.section.getAttribute('aria-busy')==='true' || d.querySelector('form button').disabled)return;
     if(implicit&&dialogPolicy?.critical)return;
     if(mayLeaveModal())d.close();
   }
-  let start=null,finish=false;
-  d.addEventListener('pointerdown',e=>{finish=false;start=e.isPrimary&&e.button===0&&outside(e)?{id:e.pointerId,x:e.clientX,y:e.clientY}:null});
-  d.addEventListener('pointermove',e=>{if(start && Math.hypot(e.clientX-start.x,e.clientY-start.y)>9)start=null});
-  d.addEventListener('pointercancel',()=>{start=null;finish=false});
-  d.addEventListener('pointerup',e=>{finish=!!start && e.pointerId===start.id && outside(e) && Math.hypot(e.clientX-start.x,e.clientY-start.y)<=9;start=null});
-  d.addEventListener('click',e=>{
-    if(!outside(e))return;
+  let start=null,allowClick=null;
+  function begin(point,id,valid){
+    allowClick=false;
+    start=valid?{id,x:point.clientX,y:point.clientY}:null;
+  }
+  function track(point,id){
+    if(start && (start.id!==id || Math.hypot(point.clientX-start.x,point.clientY-start.y)>9))start=null;
+  }
+  function finish(point,id){
+    track(point,id);
+    const tapped=Boolean(start) && document.elementFromPoint(point.clientX,point.clientY)===backdrop;
+    start=null;return tapped;
+  }
+  d.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch')begin(e,e.pointerId,e.target===backdrop&&e.isPrimary&&e.button===0);
+  });
+  d.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')track(e,e.pointerId)});
+  d.addEventListener('pointerup',e=>{if(e.pointerType!=='touch')allowClick=finish(e,e.pointerId)});
+  d.addEventListener('pointercancel',()=>{start=null;allowClick=false});
+  d.addEventListener('touchstart',e=>{
+    const t=e.changedTouches[0];begin(t,t.identifier,e.target===backdrop&&e.touches.length===1);
+  },{passive:true});
+  d.addEventListener('touchmove',e=>{
+    const t=e.changedTouches[0];track(t,t.identifier);
+  },{passive:true});
+  d.addEventListener('touchcancel',()=>{start=null;allowClick=false});
+  // WebKit can deliver a completed touch without a compatibility click. Consume
+  // its native default before removing the backdrop so the tap cannot pass through.
+  backdrop.addEventListener('touchend',e=>{
+    const t=e.changedTouches[0],tapped=finish(t,t.identifier)&&e.touches.length===0;
+    e.stopPropagation();
+    if(!e.cancelable){allowClick=tapped;return}
+    e.preventDefault();allowClick=false;
+    if(tapped)dismiss(true);
+  },{passive:false});
+  backdrop.addEventListener('click',e=>{
     e.preventDefault();e.stopPropagation();
-    if(finish)dismiss(true);
-    finish=false;
+    const tapped=allowClick!==false;allowClick=null;
+    if(tapped)dismiss(true);
   });
   d.addEventListener('cancel',e=>{e.preventDefault();dismiss(true)});
   d.querySelector('form').addEventListener('submit',e=>{e.preventDefault();dismiss(false)});
@@ -42,6 +69,9 @@ export function modal(html,policy={}){
   if(!d.dataset.bound){d.dataset.bound='true';bindDialog(d)}
   const section=document.createElement('section');section.innerHTML=html;
   d.querySelector('section').replaceWith(section);
+  const heading=section.querySelector('h2');
+  if(heading){heading.id||='modal-heading';d.setAttribute('aria-labelledby',heading.id)}
+  else d.removeAttribute('aria-labelledby');
   dialogPolicy={...policy,section,initial:values(section)};
   if(!d.open)d.showModal();
   return section;

@@ -75,18 +75,48 @@ try{
     }));
   }
   await page.setViewportSize({width:834,height:1194});
+  await summary('#filters');await page.locator('#app h1').tap();
+  await page.waitForFunction(()=>!document.querySelector('#filters').open);
+  const coveredButton=page.locator('nav button').first();
+  const hit=await coveredButton.boundingBox(),tapPoint={x:hit.x+hit.width/2,y:hit.y+hit.height/2};
+  await coveredButton.evaluate(b=>{window.underlayClicks=0;b.addEventListener('click',()=>window.underlayClicks++)});
+  async function tapBackdrop(){
+    assert.equal(await page.evaluate(({x,y})=>document.elementFromPoint(x,y)?.classList.contains('modal-backdrop'),tapPoint),true);
+    await page.touchscreen.tap(tapPoint.x,tapPoint.y);
+  }
+  await detail('law#1');await page.locator('#detail-crops canvas').first().waitFor();
+  await page.locator('#modal h2').tap();
+  assert.equal(await page.locator('#modal').isVisible(),true);
+  assert.ok(await page.locator('.modal-panel').evaluate(el=>el.scrollHeight>el.clientHeight));
+  await tapBackdrop();await page.locator('#modal').waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(()=>window.underlayClicks),0);
   await detail('law#1');await page.locator('#memo').fill('unsaved draft');
-  page.once('dialog',dialog=>dialog.dismiss());await page.keyboard.press('Escape');
+  page.once('dialog',dialog=>dialog.dismiss());await tapBackdrop();
   assert.equal(await page.locator('#memo').inputValue(),'unsaved draft');
   page.once('dialog',dialog=>dialog.accept());await page.keyboard.press('Escape');
   await page.locator('#modal').waitFor({state:'hidden'});
   await click('print');
   assert.equal(await page.locator('#print-mode').inputValue(),'two');
-  const box=await page.locator('#modal').boundingBox();
+  const box=await page.locator('.modal-panel').boundingBox();
   await page.mouse.move(box.x+12,box.y+14);await page.mouse.down();
   await page.mouse.move(2,2,{steps:8});await page.mouse.up();
   assert.equal(await page.locator('#modal').isVisible(),true);
   await page.mouse.click(2,2);await page.locator('#modal').waitFor({state:'hidden'});
+  await click('print');
+  // Hold the first real PNG encode long enough to attempt both dismissal methods.
+  await page.evaluate(()=>{
+    const encode=HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob=function(...args){
+      HTMLCanvasElement.prototype.toBlob=encode;
+      window.finishTestEncode=()=>encode.apply(this,args);
+    };
+  });
+  await click('make-proof');await page.waitForFunction(()=>typeof window.finishTestEncode==='function');
+  await tapBackdrop();await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#modal section').getAttribute('aria-busy'),'true');
+  await page.evaluate(()=>window.finishTestEncode());await page.locator('#pdfsave').waitFor();
+  await page.waitForFunction(()=>document.querySelector('#modal section')?.getAttribute('aria-busy')==='false');
+  await close();
   for(const [subject,n] of [['국어',2],['영어',1],['행정법',8],['행정학',1]])assert.equal(await page.locator('[data-subject="'+subject+'"] b').textContent(),String(n));
   await tab('행정학');await summary('#filters');assert.equal(await page.locator('[data-ft="case"]').count(),0);
   await page.locator('#f-part').selectOption('part');await page.locator('#f-chapter').selectOption('chapter');await hasCount(1);
@@ -202,7 +232,8 @@ try{
   await detail('law#1');await page.getByText('오답 이력 2회',{exact:true}).click();
   await page.locator('[data-event="law-repeat#1"]').click();await click('confirm-remove');
   await page.waitForFunction(()=>document.querySelector('.notebook-counts')?.textContent.includes('반복 0문항'));
-  await detail('law#1');await click('remove-all');await click('confirm-remove');await hasCount(6);
+  await detail('law#1');await click('remove-all');await tapBackdrop();await page.keyboard.press('Escape');
+  await click('confirm-remove');await hasCount(6);
   await nav('자료실');await page.locator('[data-doc="law"]').click();await page.locator('[data-n="1"]').waitFor();
   assert.equal(await page.locator('[data-n="1"]').getAttribute('aria-pressed'),'false');
   await nav('오답노트');await tab('행정법');await click('mistake-trash');await page.locator('[data-restore]').first().click();
@@ -262,7 +293,7 @@ try{
   assert.equal(current.questions.find(q=>q.id==='law#1').theme,'example');
   assert.equal(current.questions.find(q=>q.id==='older#1').theme,'example');
   await nav('오답노트');await tab('행정법');await click('mistake-trash');
-  await click('empty-trash');await page.keyboard.press('Escape');
+  await click('empty-trash');await tapBackdrop();await page.keyboard.press('Escape');
   assert.equal(await page.locator('#confirm-purge').isVisible(),true);
   await click('cancel-purge');await page.locator('[data-trash-pick="law#8"]').check();await click('purge-selected');
   assert.match(await page.locator('#modal section p').first().textContent(),/문항 1개의 오답 이력 1회/);
@@ -272,6 +303,47 @@ try{
   await page.locator('#region-which').waitFor();
   assert.equal(await page.locator('#region-pick').isDisabled(),true);
   await page.locator('#region-old canvas').first().waitFor();await close();
+  await nav('설정');
+  const beforeTrash=await readArchive();
+  await page.evaluate(()=>{
+    const read=Blob.prototype.arrayBuffer;
+    Blob.prototype.arrayBuffer=function(){
+      Blob.prototype.arrayBuffer=read;
+      return new Promise((resolve,reject)=>{window.finishTestBackup=()=>read.call(this).then(resolve,reject)});
+    };
+  });
+  const backupFile=page.waitForEvent('download');
+  await click('backup');await page.waitForFunction(()=>typeof window.finishTestBackup==='function');
+  await tapBackdrop();await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#modal section').getAttribute('aria-busy'),'true');
+  await page.evaluate(()=>window.finishTestBackup());
+  const oldZip=await (await backupFile).path();await page.locator('#modal').waitFor({state:'hidden'});
+  await nav('오답노트');await tab('행정법');
+  async function removeNumbers(numbers){
+    for(const n of numbers){
+      await detail('law#'+n);await click('remove-all');await click('confirm-remove');
+      await page.locator('#modal').waitFor({state:'hidden'});await page.locator('[data-detail="law#'+n+'"]').waitFor({state:'detached'});
+    }
+  }
+  await removeNumbers([2,3,4]);await click('mistake-trash');
+  for(const n of [2,3])await page.locator('[data-trash-pick="law#'+n+'"]').check();
+  await click('restore-selected');await page.locator('[data-detail="law#3"]').waitFor();
+  await click('mistake-trash');await page.locator('[data-purge="law#4"]').click();await click('confirm-purge');
+  await page.locator('#modal').waitFor({state:'hidden'});
+  await removeNumbers([2,3]);await click('mistake-trash');await click('empty-trash');
+  assert.match(await page.locator('#modal section p').first().textContent(),/문항 2개의 오답 이력 2회/);
+  await tapBackdrop();await click('confirm-purge');await page.locator('#modal').waitFor({state:'hidden'});
+  await nav('설정');
+  const chooser=page.waitForEvent('filechooser');await click('restore');
+  page.once('dialog',confirm=>confirm.accept());
+  await (await chooser).setFiles({name:'fixture-before-trash.zip',mimeType:'application/zip',buffer:fs.readFileSync(oldZip)});
+  await page.waitForFunction(()=>document.querySelector('#notice')?.textContent==='복원했습니다.');
+  const afterTrash=await readArchive(),erased=new Set(['law#2','law#3','law#4']);
+  assert.deepEqual(afterTrash.events,beforeTrash.events.filter(e=>!erased.has(e.q)));
+  // ZIP metadata is JSON, so optional fields with an undefined value are omitted.
+  assert.deepEqual(afterTrash.documents,JSON.parse(JSON.stringify(beforeTrash.documents)));
+  assert.deepEqual(afterTrash.books,beforeTrash.books);
+  assert.equal((afterTrash.removedMistakes||[]).length,0);
   const fileHashes=await page.evaluate(async()=>{
     const db=await new Promise(res=>{const r=indexedDB.open('yu-study-archive',1);r.onsuccess=()=>res(r.result)});
     const store=db.transaction('files').objectStore('files');
