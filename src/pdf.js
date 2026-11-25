@@ -1,4 +1,4 @@
-import {examPixels,pageFrame,beforeLine,tightBand,regionVersion} from './exam-regions.js';
+import {examPixels,pageFrame,beforeLine,tightBand,regionVersion,repeatedPageEdges} from './exam-regions.js';
 const base=new URL('vendor/',document.baseURI);
 let engine;
 export async function openPdf(blob){engine??=await import(/* @vite-ignore */ new URL('pdf.min.mjs',base).href);engine.GlobalWorkerOptions.workerSrc=new URL('pdf.worker.min.mjs',base).href;
@@ -43,21 +43,6 @@ function markerLines(lines,count){
   }
   return result;
 }
-function repeatedEdge(pages){
-  const tag=l=>l.str.trim().replace(/\d+/g,'#')+'@'+Math.round(l.x*50)+','+Math.round(l.base*150);
-  const frequency=new Map();
-  for(const pg of pages){
-    const keys=new Set(pg.lines.filter(l=>l.bottom<.09||l.y>.92).map(tag));
-    for(const k of keys)frequency.set(k,(frequency.get(k)||0)+1);
-  }
-  const repeated=l=>pages.length>1 && frequency.get(tag(l))>=Math.max(2,Math.ceil(pages.length*.55)) &&
-    (/시험|책형|쪽|페이지|년도|[0-9]\s*(?:\/|of)\s*[0-9]/i.test(l.str)||/^\s*\d+\s*$/.test(l.str));
-  return pages.map(pg=>{
-    const header=pg.lines.filter(l=>l.bottom<.09&&repeated(l));
-    const footer=pg.lines.filter(l=>l.y>.92&&repeated(l));
-    return [Math.max(0,...header.map(l=>l.bottom+.001)),Math.min(1,...footer.map(l=>l.y-.001))];
-  });
-}
 export async function detect(pdf,count,{signal,progress=()=>{}}={}){
   const pages=[];
   for(let n=1;n<=pdf.numPages;n++){
@@ -70,7 +55,7 @@ export async function detect(pdf,count,{signal,progress=()=>{}}={}){
     }finally{page.cleanup()}
   }
   if(!pages.some(p=>p.candidates.length))return {};
-  const edge=repeatedEdge(pages);
+  const edge=repeatedPageEdges(pages);
   const right=l=>l.x>.41&&l.x<.69,left=l=>l.x<.25;
   const twoInBook=pages.some(p=>p.candidates.some(left)&&p.candidates.some(right));
   const out={},passages=[];

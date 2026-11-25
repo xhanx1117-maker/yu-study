@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pageFrame,tightBand,beforeLine} from '../src/exam-regions.js';
+import {pageFrame,tightBand,beforeLine,repeatedPageEdges} from '../src/exam-regions.js';
 import {regionRecord,regionStamp,applyRegionChanges} from '../src/region-records.js';
 
 test('a page frame is excluded while a case box and last line below 96.5% survive',()=>{
@@ -30,4 +30,16 @@ test('region proposals preserve study data, confirmed legacy crops and concurren
   assert.throws(()=>applyRegionChanges(s,[{...proposal,stamp:regionStamp(q)}]));
   delete q.reviewed;
   assert.throws(()=>applyRegionChanges(s,[{...proposal,stamp:regionStamp(q)}]));
+});
+test('a centered running subject and sheet number end the printed lane, while low choices survive',()=>{
+  const line=(str,x,right,y)=>({str,x,right,y,bottom:y+.012,base:y+.009});
+  const pages=[1,2,3,4].map(n=>({lines:[
+    line('④ 8 - 4',.56,.86,.935),
+    line('Example booklet 4 - '+n,.435,.565,.949)
+  ]}));
+  for(const [top,bottom] of repeatedPageEdges(pages)){
+    assert.equal(top,0);assert.ok(Math.abs(bottom-.948)<.00001);
+  }
+  const formulas=pages.map(()=>({lines:[line('④ 8 - 4',.44,.56,.94)]}));
+  for(const [,bottom] of repeatedPageEdges(formulas))assert.equal(bottom,1);
 });

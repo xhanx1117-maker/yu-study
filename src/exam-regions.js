@@ -80,3 +80,27 @@ export function tightBand(image,frame,lane,start,end,page,pad=3){
   const x=Math.max(l,x1-pad),y=Math.max(start,y1-pad);
   return {page,x:x/w,y:y/h,w:(Math.min(r,x2+1+pad)-x)/w,h:(Math.min(end,y2+1+pad)-y)/h};
 }
+
+// Some papers use a centered "total - current" footer without a horizontal rule.
+export function repeatedPageEdges(pages){
+  const tag=l=>l.str.trim().replace(/\d+/g,'#')+'@'+Math.round(l.x*50)+','+Math.round(l.base*150);
+  const frequency=new Map();
+  for(const pg of pages){
+    const keys=new Set(pg.lines.filter(l=>l.bottom<.09||l.y>.92).map(tag));
+    for(const k of keys)frequency.set(k,(frequency.get(k)||0)+1);
+  }
+  function repeated(line,index){
+    if(pages.length<2||frequency.get(tag(line))<Math.max(2,Math.ceil(pages.length*.55)))return false;
+    if(/시험|책형|쪽|페이지|년도|[0-9]\s*(?:\/|of)\s*[0-9]/i.test(line.str)||/^\s*\d+\s*$/.test(line.str))return true;
+    if(line.y<=.92||line.x>=.5||line.right<=.5)return false;
+    const sequence=line.str.match(/(?:^|\s)(\d+)\s*[-–—]\s*(\d+)\s*$/);
+    if(!sequence)return false;
+    const first=Number(sequence[1]),second=Number(sequence[2]);
+    return first===pages.length&&second===index+1 || first===index+1&&second===pages.length;
+  }
+  return pages.map((pg,index)=>{
+    const header=pg.lines.filter(l=>l.bottom<.09&&repeated(l,index));
+    const footer=pg.lines.filter(l=>l.y>.92&&repeated(l,index));
+    return [Math.max(0,...header.map(l=>l.bottom+.001)),Math.min(1,...footer.map(l=>l.y-.001))];
+  });
+}
