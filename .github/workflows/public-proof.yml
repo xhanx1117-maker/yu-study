@@ -1,0 +1,33 @@
+name: Measure public exam print geometry
+on:
+  push:
+    branches: [public-sheet-proof-v04]
+permissions:
+  contents: read
+jobs:
+  public-papers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts && npm run build
+      - name: Render publicly released sheets in temporary storage
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+          YU_PRINT_GEOMETRY: '1'
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, urllib.request, urllib.parse, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          for subject in ['행정법총론','행정학개론']:
+              url = 'https://d2u7om5rih5x7z.cloudfront.net/' + urllib.parse.quote(f'exam-archive/공무원/국가직/9급/2026/{subject}/original/2026_{subject}.pdf')
+              req = urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+              data = urllib.request.urlopen(req,timeout=35).read()
+              assert data.startswith(b'%PDF')
+              source = root / 'published-paper.pdf'
+              source.write_bytes(data)
+              subprocess.run(['node','scripts/print-proof.mjs',str(source),subject,','.join(map(str,range(1,21))),str(root/'temporary-proof.pdf')],check=True)
+          PY

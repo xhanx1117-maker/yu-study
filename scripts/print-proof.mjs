@@ -89,7 +89,7 @@ try{
         }
       }finally{await exported.destroy()}
       const file64=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(file)});
-      return {file64,rendered,formats,elapsed,magenta,texts,hashOK:fileHash===await hash(await get('files',fileHash)),
+      return {file64,rendered,formats,elapsed,magenta,texts,geometry:prepared.plan.pages.flatMap(sheet=>sheet.placements.filter(v=>v.kind==='crop').map(v=>({id:v.item,width:v.part.width,height:v.part.height,pageWidth:v.part.pageWidth,pageHeight:v.part.pageHeight,oneColumn:v.part.oneColumn,laneWidth:v.part.laneWidth}))),hashOK:fileHash===await hash(await get('files',fileHash)),
         detected:numbers.map(n=>map[n].text),placements:prepared.plan.pages.map(p=>p.placements.filter(v=>v.kind==='crop').map(v=>({id:v.item,x:v.x,y:v.y,w:v.w,h:v.h,scale:v.scale})))};
     },{encoded:Buffer.from(job.bytes).toString('base64'),subject:job.subject,numbers:job.numbers,synthetic:!input});
     const bytes=Buffer.from(result.file64,'base64');
@@ -103,6 +103,10 @@ try{
       assert.equal(text.length,6,'every final choice remains searchable, including beneath 96.5% of the source');
       for(const t of text)assert.ok(Math.abs(t.size-11*.817)<.08);
       assert.equal(result.formats.vector,6);
+    }
+    if(input && process.env.YU_PRINT_GEOMETRY==='1'){
+      console.log('PRINT_GEOMETRY '+JSON.stringify(result.geometry));
+      console.log('CHOICE_COUNTS '+JSON.stringify(result.detected.map(value=>['①','②','③','④'].map(mark=>value.includes(mark)))));
     }
     if(job.destination){
       await mkdir(path.dirname(job.destination),{recursive:true});await writeFile(job.destination,bytes);
