@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {initial} from '../src/model.js';
 
 const require=createRequire(import.meta.url);
+const {version}=require('../package.json');
 const {chromium,webkit}=require('playwright');
 const {PDFDocument,StandardFonts}=require('pdf-lib');
 const server=testServer();
@@ -195,8 +196,8 @@ try{
   console.log(engine+': original File PDF and legacy question-only coordinates preserved after automatic scan');
 
   await page.getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByText('기기 저장 · v0.4.0').waitFor();
-  assert.equal(await page.getByText('기기 저장 · v0.4.0').count(),1);
+  await page.getByText('기기 저장 · v'+version).waitFor();
+  assert.equal(await page.getByText('기기 저장 · v'+version).count(),1);
   assert.equal(await page.getByRole('button',{name:/Dropbox/}).count(),0);
   const choosing=page.waitForEvent('filechooser');
   await page.locator('#seed').click();

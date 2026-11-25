@@ -70,12 +70,13 @@ try{
   await ime.detach();
   await page.locator('[data-detail]').first().click();
   await page.locator('.crops canvas').waitFor();
-  await page.locator('dialog form button').click();
+  assert.ok(await page.evaluate(()=>document.elementFromPoint(5,5)?.classList.contains('modal-backdrop')));
+  await page.touchscreen.tap(5,5);await page.locator('#modal').waitFor({state:'hidden'});
   await page.locator('#print').click();await page.locator('#make-proof').click();
   await page.locator('#proof-canvas canvas').waitFor();
   assert.equal(await page.locator('[data-q]').count(),1);
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({version,url,status:response.status(),registration,manifest,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline native Korean composition and committed search','offline workbook preview']}));
+  console.log(JSON.stringify({version,url,status:response.status(),registration,manifest,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline native Korean composition and committed search','offline detail backdrop tap','offline workbook preview']}));
 }finally{
   await browser?.close();
   clearTimeout(deadline);
