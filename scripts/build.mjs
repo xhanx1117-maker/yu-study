@@ -14,6 +14,17 @@ export async function buildApp(portable=true){
     await copy(path.join(root,'index.html'),'index.html');
   }
   const mods=process.env.YU_DEPENDENCIES||path.join(root,'node_modules');
+  const fontDir=path.join(mods,'@fontsource/noto-sans-kr'),printDir=path.join(dist,'vendor/print-font');
+  const hasFont=await access(path.join(fontDir,'400.css')).then(()=>true,()=>false);
+  if(hasFont){
+    // Ship the normal weight and only the WOFF2 slices referenced by its stylesheet.
+    const css=(await readFile(path.join(fontDir,'400.css'),'utf8')).replace(/,\s*url\([^)]*\.woff['"]?\)\s*format\([^)]*\)/g,'');
+    const files=new Set([...css.matchAll(/url\(['"]?\.\/files\/([^)'"]+\.woff2)['"]?\)/g)].map(match=>match[1]));
+    if(!files.size)throw Error('Missing Korean print font slices');
+    await mkdir(path.join(printDir,'files'),{recursive:true});
+    await Promise.all([...files].map(name=>cp(path.join(fontDir,'files',name),path.join(printDir,'files',name))));
+    await writeFile(path.join(printDir,'400.css'),css);await cp(path.join(fontDir,'LICENSE'),path.join(printDir,'LICENSE'));
+  }else if(!portable||!process.env.YU_DEPENDENCIES)throw Error('Install the Korean print font before building.');
   const pdfium=path.join(mods,'@embedpdf/pdfium');
   const available=await access(path.join(pdfium,'dist/pdfium.wasm')).then(()=>true,()=>false);
   if(available){

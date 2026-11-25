@@ -4,6 +4,7 @@ import {needsRepair,regionRecord} from './region-records.js';
 import {sortRows} from './notebook-model.js';
 import {A4,MM,planWorkbook,printSettings} from './workbook-layout.js';
 import {regionVersion} from './exam-regions.js';
+import {loadPrintFont,printFont} from './print-font.js';
 
 // Cache only compact coordinates/text keyed by the immutable source, never PDF pages or bitmaps.
 const repairedSources=new Map();
@@ -238,8 +239,10 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
       if(!part.oneColumn && !part.wholePage && part.width<=part.pageWidth*.60)part.laneWidth=lanes.get(part.pageWidth+'x'+part.pageHeight);
     }
   }
+  await loadPrintFont(items.flatMap(item=>item.labels.map(label=>label.text)).join(' '));
+  signal.throwIfAborted();
   const ctx=document.createElement('canvas').getContext('2d');
-  const measure=(text,size)=>{ctx.font=size+'px sans-serif';return ctx.measureText(text).width};
+  const measure=(text,size)=>{ctx.font=size+'px '+printFont;return ctx.measureText(text).width};
   const references=options.serial?unique.map((r,i)=>(i+1)+' = '+[r.doc.year,r.doc.exam,r.doc.title,'원문 '+r.question.number+'번'].filter(Boolean).join(' · ')).join('\n'):'';
   return {options,plan:planWorkbook(items,options,measure),questionCount:unique.length,references};
 }

@@ -2,6 +2,7 @@ import {get} from './db.js';
 import {openPdf} from './pdf.js';
 import {renderArea} from './workbook-source.js';
 import {vectorCrops} from './vector-client.js';
+import {loadPrintFont,printFont} from './print-font.js';
 
 let library;
 export async function loadLibrary(){
@@ -23,7 +24,7 @@ async function png(canvas){
 
 async function labelImage(output,page,text,x,top,size,maxWidth,height,bold=false){
   const factor=4,canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
-  const font=(bold?'600 ':'')+size+'px sans-serif';
+  const font=(bold?'600 ':'')+size+'px '+printFont;
   ctx.font=font;
   const w=Math.min(maxWidth,Math.ceil(ctx.measureText(text).width)+2);
   canvas.width=Math.max(1,Math.ceil(w*factor));canvas.height=Math.ceil((size+4)*factor);
@@ -84,6 +85,7 @@ export async function writeWorkbook(prepared, title, signal, progress,readFile=k
   const vector=vectorCrops(signal),plain=await output.embedFont(lib.StandardFonts.Helvetica);
   output.setTitle(title);output.setCreator('Yu: study');output.setProducer('Yu: study');
   if(prepared.references)output.setSubject(prepared.references);
+  await loadPrintFont('Yu: study  ·  '+title);
   let key,source,blob,originalPdf,finished=0;
   const total=plan.pages.reduce((sum,p)=>sum+p.placements.filter(v=>v.kind==='crop').length,0);
   const formats={vector:0,raster:0,original:0};
