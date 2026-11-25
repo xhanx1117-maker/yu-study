@@ -17,7 +17,11 @@ export function openPrint(archive,rows,filters,{readFile,saveSettings=true}={}){
   if(!rows.length)return notice('출력할 문항이 없습니다.');
   const opts=printSettings(archive.printSettings),missing=rows.filter(r=>!r.question.regions.length);
   const subjects=[...new Set(rows.map(r=>r.doc.subject).filter(Boolean))];
-  const title= [filters.subject||subjects.join('·'), filters.themeIds?.length===1?rows.flatMap(r=>r.linked).filter(t=>t.id===filters.themeIds[0]).slice(0,1).map(t=>[t.number,t.title].filter(Boolean).join(' '))[0]:'','오답 문제집'].filter(Boolean).join(' · ');
+  const themes=rows.flatMap(r=>r.linked),theme=filters.themeIds?.length===1 && themes.find(t=>t.id===filters.themeIds[0]);
+  const group=theme?[theme.number,theme.title].filter(Boolean).join(' '):
+    filters.chapter?themes.find(t=>t.chapterId===filters.chapter)?.chapterTitle:
+    filters.part?themes.find(t=>t.partId===filters.part)?.partTitle:'';
+  const title=[filters.subject||subjects.join('·'),group,'오답 문제집'].filter(Boolean).join(' · ');
   const section=modal('<h2>시험지형 PDF 출력</h2><p><strong>'+esc(title)+'</strong> · '+rows.length+'문항 · A4 세로</p>'+
     '<div class="print-grid"><label>레이아웃'+select('print-mode',layouts,opts.mode)+'</label><label>용지 맞춤 기준 배율 (%)<input id="print-scale" type="number" min="50" max="150" value="'+opts.scale+'"></label></div>'+
     '<details class="print-more"><summary>출력 세부 설정</summary><div class="print-grid"><label>페이지 여백 (mm)<input id="print-margin" type="number" min="5" max="24" value="'+opts.margin+'"></label>'+

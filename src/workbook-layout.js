@@ -2,7 +2,7 @@
 export const MM = 72 / 25.4;
 export const A4 = {width:210*MM,height:297*MM};
 export const layouts = {auto:'원본 기반 자동',two:'시험지형 2단',one:'시험지형 1단',original:'원본 페이지',individual:'문항별 개별 페이지'};
-export const defaults = {mode:'two',scale:100,margin:6,gap:3,divider:true,source:true,number:true,serial:false,
+export const defaults = {mode:'two',scale:100,margin:5,gap:3,divider:true,source:true,number:true,serial:false,
   theme:false,bookPage:false,count:false,memo:false,answers:false,sections:false,order:'current'};
 export function printSettings(input={}) {
   const result={...defaults};
@@ -38,7 +38,7 @@ export function wrapLines(text,width,measure,size) {
 }
 
 export function planWorkbook(items, input, measure=(text,size)=>[...text].length*size*.78){
-  const options=printSettings(input), margin=options.margin*MM,gap=options.gap*MM,gutter=5*MM;
+  const options=printSettings(input), margin=options.margin*MM,gap=options.gap*MM,gutter=3*MM;
   const top=margin+22,bottom=A4.height-margin-3,full=A4.width-2*margin,colWidth=(full-gutter)/2;
   const requested=options.scale/100, pages=[];
   let page, band, ends, column;

@@ -182,7 +182,7 @@ try{
   const ordered=first.strips.toSorted((a,b)=>(a.x>280)-(b.x>280)||a.y-b.y);
   for(const [i,strip] of ordered.entries()){
     assert.ok(Math.abs(strip.w-(65+2*i))<=1,'one-to-one physical width for Q'+(i+1)+' = '+strip.w);
-    assert.ok(strip.x>=20&&strip.x<335&&strip.y>45&&strip.y<760);
+    assert.ok(strip.x>=5*72/25.4&&strip.x<335&&strip.y>40&&strip.y<760);
   }
   assert.equal(ordered.filter(a=>a.x<280).length,4);assert.equal(ordered.filter(a=>a.x>280).length,3);
   const body=first.texts.map(t=>t[0]).join(' ');

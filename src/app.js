@@ -186,6 +186,7 @@ async function settings(s,active){const ts=allThemes(s),space=await navigator.st
  });on('restore',async()=>{const [f]=await pick('.zip');if(f&&await restore(f)){await show();notice('복원했습니다.')}});on('persist',async()=>notice(await navigator.storage?.persist?.()?'영속 저장이 허용되었습니다.':'이 환경에서 영속 저장이 허용되지 않았습니다.'))}
 async function sampleLink(){
   if(!location.hash.startsWith('#sample?'))return;
+  if($('#modal').open){notice('현재 작업을 닫은 뒤 샘플 링크를 여세요.');return}
   const fragment=location.hash;
   history.replaceState(null,'',location.pathname+location.search);
   const {openSample}=await import('./sample-print.js');await openSample(fragment);

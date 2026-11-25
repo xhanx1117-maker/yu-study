@@ -69,6 +69,7 @@ export async function detect(pdf,count,{signal,progress=()=>{}}={}){
       pages.push({lines,candidates});
     }finally{page.cleanup()}
   }
+  if(!pages.some(p=>p.candidates.length))return {};
   const edge=repeatedEdge(pages);
   const right=l=>l.x>.41&&l.x<.69,left=l=>l.x<.25;
   const twoInBook=pages.some(p=>p.candidates.some(left)&&p.candidates.some(right));
@@ -82,6 +83,9 @@ export async function detect(pdf,count,{signal,progress=()=>{}}={}){
   }
   for(const [index,info] of pages.entries()){
     signal?.throwIfAborted();progress('문항 영역 분석',index+1,pages.length);
+    // A combined question-and-answer booklet may append an answer key.
+    if(previous && !info.candidates.some(c=>c.n===previous+1) &&
+       info.lines.some(l=>l.y<.18 && /^(?:정답\s*(?:가안|표|및\s*해설|과\s*해설)|answer\s+key)\s*$/i.test(l.str.trim())))break;
     const page=await pdf.getPage(index+1),view=page.getViewport({scale:1});
     const scale=Math.min(1.65,1800/Math.max(view.width,view.height),Math.sqrt(1450000/(view.width*view.height)));
     const vp=page.getViewport({scale}),canvas=document.createElement('canvas');
