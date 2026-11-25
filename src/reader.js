@@ -38,9 +38,19 @@ export async function reader(id,alive,questionNumber,s,openDoc){
  }
  const lifetime=new AbortController();
  async function saveDoc(fn){await change(v=>{fn(v.documents.find(x=>x.id===id),v)})}
- async function panel(){const v=await state();if(!alive())return;const list=v.sessions.filter(a=>a.doc===id);$('#sessions').innerHTML=list.map((a,i)=>'<option value="'+esc(a.id)+'" '+(a.id===session?'selected':'')+'>'+ (i+1)+'회 · '+esc(a.date.slice(0,10))+'</option>').join('');selected=new Set(v.events.filter(e=>e.session===session).map(e=>e.number));const counts=stats(v);$('.numbers').innerHTML=Array.from({length:d.count},(_,i)=>{const n=i+1,q=v.questions.find(q=>q.doc===id&&q.number===n),count=counts.get(id+'#'+n)||0;return '<button data-n="'+n+'" aria-pressed="'+selected.has(n)+'" class="'+(selected.has(n)?'selected':'')+'">'+String(n).padStart(2,'0')+'<small>'+(selected.has(n)?'✓ ':'')+(count?count+'회':'')+(q?.status==='숙지 완료'?' ✔':'')+'</small></button>'}).join('')}
+ async function panel(v){v??=await state();if(!alive())return;const list=v.sessions.filter(a=>a.doc===id);$('#sessions').innerHTML=list.map((a,i)=>'<option value="'+esc(a.id)+'" '+(a.id===session?'selected':'')+'>'+ (i+1)+'회 · '+esc(a.date.slice(0,10))+'</option>').join('');selected=new Set(v.events.filter(e=>e.session===session).map(e=>e.number));const counts=stats(v),byNumber=new Map(v.questions.filter(q=>q.doc===id).map(q=>[q.number,q]));$('.numbers').innerHTML=Array.from({length:d.count},(_,i)=>{const n=i+1,q=byNumber.get(n),count=counts.get(id+'#'+n)||0;return '<button data-n="'+n+'" aria-pressed="'+selected.has(n)+'" class="'+(selected.has(n)?'selected':'')+'">'+String(n).padStart(2,'0')+'<small>'+(selected.has(n)?'✓ ':'')+(count?count+'회':'')+(q?.status==='숙지 완료'?' ✔':'')+'</small></button>'}).join('')}
  function overlay(){if(!alive()||!isPaper)return;const p=$('.paper'),rs=detected[regionN]?.regions||[];p.querySelectorAll('.rect').forEach(x=>x.remove());for(const r of rs.filter(r=>r.page===page)){const el=document.createElement('i');el.className='rect';Object.assign(el.style,{left:r.x*100+'%',top:r.y*100+'%',width:r.w*100+'%',height:r.h*100+'%'});p.append(el)}$('#reginfo').textContent=regionN+'번 · 영역 '+rs.length+'개 · '+(detected[regionN]?.reviewed?'수동 지정':'검수 필요')}
- async function draw(){const token=++rev,cv=document.createElement('canvas');await paint(pdf,page,cv,1100*zoom);if(!alive()||token!==rev){cv.width=cv.height=1;return}const old=$('.paper canvas');old.replaceWith(cv);old.width=old.height=1;$('.paper').style.width=zoom*100+'%';$('#pg').value=page;overlay();await saveDoc(x=>{x.page=page;x.opened=new Date().toISOString()})}
+ let rendering,lastSavedPage;
+ async function draw(){
+   const token=++rev,drawPage=page,cv=document.createElement('canvas');
+   rendering?.abort();const controller=rendering=new AbortController();
+   try{await paint(pdf,drawPage,cv,1100*zoom,null,controller.signal)}
+   catch(error){cv.width=cv.height=1;if(controller.signal.aborted||!alive())return;throw error}
+   if(!alive()||token!==rev){cv.width=cv.height=1;return}
+   const old=paper.querySelector('canvas');old.replaceWith(cv);old.width=old.height=1;
+   paper.style.width=zoom*100+'%';$('#pg').value=drawPage;overlay();
+   if(lastSavedPage!==drawPage){await saveDoc(x=>{x.page=drawPage;x.opened=new Date().toISOString()});if(token===rev)lastSavedPage=drawPage}
+ }
  async function go(n){page=Math.min(pdf.numPages,Math.max(1,Number(n)||1));await draw()}
  async function updateRegions(fn){await saveDoc((x,v)=>{const map=savedRegions(x,v),row=map[regionN]||automatic?.[regionN]&&structuredClone(automatic[regionN])||{regions:[]};fn(row.regions);map[regionN]={...row,reviewed:true,text:'',regions:row.regions};x.detected=map;const q=v.questions.find(q=>q.doc===id&&q.number===regionN);if(q)Object.assign(q,map[regionN]);detected={...automatic,...map}});overlay()}
  async function scan(){if(busy)return;busy=true;notice('문항 위치를 분석하고 있습니다.');try{const map=await detect(pdf,d.count,{signal:lifetime.signal});await saveDoc((x,v)=>{const rows=savedRegions(x,v);for(const [key,row] of Object.entries(map)){if(!protectedRegion(rows[key])){rows[key]=row;const q=v.questions.find(q=>q.doc===id&&q.number===+key);if(q)Object.assign(q,row)}}x.detected=rows;x.scanned=true;detected=rows});overlay();if(alive())notice(Object.keys(map).length+'개 문항을 인식했습니다. 영역을 확인하세요.')}finally{busy=false}}
@@ -76,7 +86,7 @@ export async function reader(id,alive,questionNumber,s,openDoc){
    const area={page,x:Math.min(a,x),y:Math.min(b,y),w,h};
    if(sharedRange)await addPassage(area,sharedRange);else await updateRegions(rs=>rs.push(area));
  }});
- if(isPaper){$('#rn').value=regionN;await panel()}await draw();
+ if(isPaper){$('#rn').value=regionN;await panel(s)}await draw();
  if(isPaper&&!d.scanned&&!d.analysisState&&alive())guard(scan)();
- return ()=>{lifetime.abort();const canvas=paper.querySelector('canvas');if(canvas)canvas.width=canvas.height=1;pdf.destroy().catch(()=>{})}
+ return ()=>{lifetime.abort();rendering?.abort();const canvas=paper.querySelector('canvas');if(canvas)canvas.width=canvas.height=1;pdf.destroy().catch(()=>{})}
 }

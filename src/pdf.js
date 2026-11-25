@@ -27,7 +27,19 @@ export async function probePdf(data,worker){
     return {heading,sample,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};
   }finally{await pdf.destroy()}
 }
-export async function paint(pdf,page,canvas,width=1100,region=null){const p=await pdf.getPage(page),v=p.getViewport({scale:1}),scale=Math.min(3,width/v.width),vp=p.getViewport({scale}),r=region||{x:0,y:0,w:1,h:1};canvas.width=Math.max(1,Math.ceil(vp.width*r.w));canvas.height=Math.max(1,Math.ceil(vp.height*r.h));await p.render({canvasContext:canvas.getContext('2d'),viewport:vp,transform:[1,0,0,1,-vp.width*r.x,-vp.height*r.y]}).promise}
+export async function paint(pdf,page,canvas,width=1100,region=null,signal){
+  const p=await pdf.getPage(page);
+  let task;
+  const abort=()=>task?.cancel();
+  try{
+    signal?.throwIfAborted();
+    const original=p.getViewport({scale:1}),vp=p.getViewport({scale:Math.min(3,width/original.width)});
+    const r=region||{x:0,y:0,w:1,h:1};
+    canvas.width=Math.max(1,Math.ceil(vp.width*r.w));canvas.height=Math.max(1,Math.ceil(vp.height*r.h));
+    task=p.render({canvasContext:canvas.getContext('2d'),viewport:vp,transform:[1,0,0,1,-vp.width*r.x,-vp.height*r.y]});
+    signal?.addEventListener('abort',abort,{once:true});await task.promise;
+  }finally{signal?.removeEventListener('abort',abort);p.cleanup()}
+}
 async function textContent(page){
  // Some Safari versions support stream readers but not async stream iteration.
  // PDF.js getTextContent uses for-await even in its legacy build.

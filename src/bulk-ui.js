@@ -46,6 +46,7 @@ export async function importMenu({refresh,restore,manual},initialFiles){
     bindInputs();bind('manual-one',manual);bind('restore-archive',restore);
   }
   function progressView(title){
+    lastDraw=-Infinity;
     show('<p id="bulk-step" role="status">'+esc(title)+'</p><progress id="bulk-meter"></progress><p id="bulk-file"></p><p class="sub" id="bulk-numbers"></p>'+
       btn('bulk-pause','일시중지')+'<p class="sub">화면을 벗어나면 진행한 항목까지 저장합니다.</p>');
     bind('bulk-pause',()=>{control.abort();$('#bulk-pause').disabled=true;$('#bulk-step').textContent='현재 처리한 파일을 정리하고 있습니다…'});
@@ -61,7 +62,12 @@ export async function importMenu({refresh,restore,manual},initialFiles){
     control={pause:false,signal:controller.signal,abort(){this.pause=true;controller.abort()}};
     const hide=()=>{if(document.hidden)control.abort()};
     busy=true;document.addEventListener('visibilitychange',hide);
-    try{await exclusive(fn)}
+    try{await exclusive(async()=>{
+      const live=await currentJob(),stale=live?.id!==job?.id;
+      job=live;rows=job?await jobRows(job):[];
+      if(stale){sources.clear();throw Error('다른 창에서 가져오기 작업을 변경했습니다. 현재 목록을 확인하세요.')}
+      await fn();
+    })}
     catch(e){notice(e.message||'가져오기를 마칠 수 없습니다.');if(job)job=await currentJob()}
     finally{
       busy=false;document.removeEventListener('visibilitychange',hide);
@@ -84,6 +90,8 @@ export async function importMenu({refresh,restore,manual},initialFiles){
   }
   async function commit(){
     await running(async()=>{
+      const duplicates=rows.filter(r=>r.status==='duplicate').length;
+      if(!job.options.skip&&duplicates&&!confirm('동일한 PDF '+duplicates+'개는 기존 자료와 기록을 유지합니다. 신규 파일만 등록할까요?'))return;
       progressView('기기에 등록 중');
       await register(job,rows,control,row=>{
         changed=true;const s=summary(rows);paint('기기에 등록 중',row.path,s.registered+s.duplicate+s.failed,rows.length,'등록 '+s.registered+' · 중복 '+s.duplicate+' · 실패 '+s.failed);
@@ -96,10 +104,11 @@ export async function importMenu({refresh,restore,manual},initialFiles){
     const scanErrors=docs.filter(d=>d.analysisState==='error'),scanQueue=docs.filter(d=>d.analysisState==='queued'),done=docs.filter(d=>d.scanned).length;
     const checkbox=(key,label)=>'<label><input type="checkbox" data-bulk-option="'+key+'" '+(opts[key]?'checked':'')+'> '+label+'</label>';
     const describe=m=>[...m].map(([k,v])=>k+' '+v+'개').join(' · ')||'—';
-    const failures=rows.filter(r=>r.error),missing=rows.some(r=>(r.status==='pending'||r.status==='failed')&&!sources.has(r.id));
+    const failures=rows.filter(r=>r.error),reviews=rows.filter(r=>r.info?.reviewReasons?.length&&['ready','registered'].includes(r.status)),missing=rows.some(r=>(r.status==='pending'||r.status==='failed')&&!sources.has(r.id));
     const count='발견 '+rows.length+'개 · 신규 '+s.ready+' · 등록 '+s.registered+' · 중복 '+s.duplicate+' · 실패 '+s.failed;
     show('<p id="bulk-counts">'+count+'</p><p>시험지 '+s.papers+' · 정답지 '+s.keys+' · 분류 검토 '+s.review+' · 예상 신규 원본 '+mb(s.bytes)+'</p>'+
       '<p class="sub">'+esc(describe(s.subjects))+'<br>'+esc(describe(s.years))+'</p>'+
+      (reviews.length?'<details class="box"><summary>분류 검토 '+reviews.length+'개</summary><ul>'+reviews.slice(0,50).map(r=>'<li>'+esc(r.path)+' · '+esc(r.info.reviewReasons.join(' · '))+'</li>').join('')+'</ul>'+(reviews.length>50?'처음 50개를 표시합니다. 자료실에서 전체를 검토할 수 있습니다.':'')+'</details>':'')+
       (s.pending?'<p>원본 확인 대기 '+s.pending+'개</p>':'')+
       (missing?'<p>보류된 파일을 처리하려면 같은 원본을 다시 선택하세요.</p>'+buttons():'')+
       (s.ready||s.pending?'<details class="box"><summary>가져오기 설정</summary>'+checkbox('skip','동일 파일 자동 건너뛰기')+checkbox('classify','과목·연도 자동 분류')+checkbox('link','정답지 자동 연결')+checkbox('analyse','저장 후 문항 영역 분석')+'</details>':'')+
@@ -111,10 +120,24 @@ export async function importMenu({refresh,restore,manual},initialFiles){
       (scanQueue.length||scanErrors.length?btn('bulk-analyse','문항 분석 재개'):'')+
       (s.registered?btn('bulk-library','자료실 열기'):'')+btn('bulk-finish',s.ready||s.pending?'이 가져오기 중단':'작업 마치기')+'</div>');
     bindInputs();
-    for(const el of section.querySelectorAll('[data-bulk-option]'))el.onchange=guard(async()=>{opts[el.dataset.bulkOption]=el.checked;await exclusive(()=>saveJob(job));await overview()});
+    for(const el of section.querySelectorAll('[data-bulk-option]'))el.onchange=guard(async()=>{
+      const {bulkOption}=el.dataset,value=el.checked,wasOpen=el.closest('details').open;
+      section.querySelectorAll('button,input').forEach(input=>{input.disabled=true});
+      try{await exclusive(async()=>{
+        const live=await currentJob();if(live?.id!==job.id)throw Error('다른 창에서 가져오기를 종료했습니다.');
+        live.options[bulkOption]=value;await saveJob(live);job=live;
+      })}finally{
+        job=await currentJob();
+        if(dialog.open&&job){rows=await jobRows(job);await overview();const setting=section.querySelector('[data-bulk-option]');if(setting)setting.closest('details').open=wasOpen}
+        else if(dialog.open)start();
+      }
+    });
     bind('bulk-preview',()=>running(()=>inspect(false)));bind('bulk-retry',()=>running(()=>inspect(true)));
     bind('bulk-register',commit);bind('bulk-analyse',()=>running(()=>analyseSaved(scanErrors.length>0)));
-    bind('bulk-library',()=>{changed=true;dialog.close()});
+    bind('bulk-library',async()=>{
+      if(job.phase==='done'&&!s.failed&&!s.ready&&!s.pending&&!scanErrors.length)await exclusive(()=>finishJob(job));
+      changed=true;dialog.close();
+    });
     bind('bulk-finish',async()=>{
       if((s.ready||s.pending||scanQueue.length||s.failed)&&!confirm('이 작업의 대기 목록과 임시 PDF를 정리할까요? 이미 등록한 원본과 오답은 보존됩니다.'))return;
       await exclusive(()=>finishJob(job));job=null;sources.clear();if(s.registered){changed=true;dialog.close()}else start();

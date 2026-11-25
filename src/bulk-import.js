@@ -13,7 +13,7 @@ export const jobRows=job=>entries(prefix(job.id));
 export const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));
 const paused=control=>control.pause||document.hidden;
 export async function discover(files){
-  const sources=new Map(),problems=[],repeated=new Map();let total=0;
+  const sources=new Map(),problems=[],repeated=new Map(),occurrences=new Map();let total=0;
   for(const file of files){const key=JSON.stringify([safePath(file.webkitRelativePath||file.name),file.size]);repeated.set(key,(repeated.get(key)||0)+1)}
   for(const file of files){
     const source=safePath(file.webkitRelativePath||file.name);
@@ -22,8 +22,11 @@ export async function discover(files){
     // Each ZIP member also carries its ordinal, CRC and path. Raw PDFs are hashed at preview.
     const key=[source,file.size].join('\n');
     function add(path,size,read,extra='',error='',digest=''){
-      const id=JSON.stringify([key,path,extra]);
-      if(!sources.has(id)){sources.set(id,{id,path,size,read,error,digest});total+=size}
+      const base=JSON.stringify([key,path,extra]),ordinal=occurrences.get(base)||0;
+      occurrences.set(base,ordinal+1);
+      // Keep the original id for the first occurrence, including jobs from earlier builds.
+      const id=ordinal?base+'/'+ordinal:base;
+      sources.set(id,{id,path,size,read,error,digest});if(!error)total+=size;
     }
     if(/\.zip$/i.test(source)){
       try{

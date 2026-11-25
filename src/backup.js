@@ -1,4 +1,4 @@
-import {state,get,change,hash,transaction,exclusive} from './db.js';
+import {state,get,change,hash,digestBytes,transaction,exclusive} from './db.js';
 import {validate,initial} from './model.js';
 import {attemptKey,reconcilePurged} from './notebook-model.js';
 import {openZip,makeZip} from './archive-zip.js';
@@ -92,7 +92,7 @@ export async function restore(file,{merge=false}={}){
     try{
       for(const k of keys){
         const blob=await read('files/'+k),bytes=await blob.arrayBuffer();
-        if(await crypto.subtle.digest('SHA-256',bytes).then(b=>Array.from(new Uint8Array(b),x=>x.toString(16).padStart(2,'0')).join(''))!==k)throw Error('손상된 PDF');
+        if(await digestBytes(bytes)!==k)throw Error('손상된 PDF');
         await transaction(['files','meta'],'readwrite',({files,meta},read)=>read(files.getKey(k),exists=>{
           if(!exists){files.add(new Blob([bytes],{type:'application/pdf'}),k);meta.put(true,stage+k)}
         }));

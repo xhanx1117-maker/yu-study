@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {testServer} from './test-server.mjs';
@@ -18,6 +20,8 @@ try{
   zip.file('2025/국가직9급/행정법_가_복사.pdf',paper);zip.file('__MACOSX/._행정학.pdf',paper);
   zip.file('2025/국가직9급/행정학_가.pdf',long);
   zip.file('2025/국가직9급/통합 최종 정답.pdf',key);zip.file('기타/깨진.pdf',Buffer.from('broken'));zip.file('설명.txt','readme');
+  // A password-protected synthetic blank page exercises PDF.js's actual password path.
+  zip.file('기타/잠김.pdf',Buffer.from('JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgPDlhOGM3NDA4NDk+Cj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9UeXBlIC9QYWdlcwovQ291bnQgMQovS2lkcyBbIDQgMCBSIF0KPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iago0IDAgb2JqCjw8Ci9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwKPj4KL01lZGlhQm94IFsgMC4wIDAuMCAxNTAgMTYwIF0KL1BhcmVudCAyIDAgUgo+PgplbmRvYmoKNSAwIG9iago8PAovViAyCi9SIDMKL0xlbmd0aCAxMjgKL1AgNDI5NDk2NzI5MgovRmlsdGVyIC9TdGFuZGFyZAovTyA8MjhmYWUwYjM1MTJhNjQ0MzgwYjQ3M2IzZWMzNzJkYWVmZmNiZmRiNTJjYjkyOTc5MmY5N2VmMWJkODI0YzlhZj4KL1UgPDkyN2M0NzQ5NTI4NDIzOGU3NzkzZmExYzU4ZGMyOGE0MjhiZjRlNWU0ZTc1OGE0MTY0MDA0ZTU2ZmZmYTAxMDg+Cj4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTUgMDAwMDAgbiAKMDAwMDAwMDA1OSAwMDAwMCBuIAowMDAwMDAwMTE4IDAwMDAwIG4gCjAwMDAwMDAxNjcgMDAwMDAgbiAKMDAwMDAwMDI2MSAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDYKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKL0lEIFsgPDYyNjY2NDM0Mzc2MzMwMzE2NjYyMzk2NjY1NjYzNTMyNjYzMjM5MzQzNDM3NjU2MTYyMzQzODM0MzY2NTM0NjU+IDw2MjY2NjQzNDM3NjMzMDMxNjY2MjM5NjY2NTY2MzUzMjY2MzIzOTM0MzQzNzY1NjE2MjM0MzgzNDM2NjUzNDY1PiBdCi9FbmNyeXB0IDUgMCBSCj4+CnN0YXJ0eHJlZgo0NzYKJSVFT0YK','base64'));
   const other=Buffer.concat([paper,Buffer.from('\n% another variant')]),z2=new Zip();z2.file('2024/지방직7급/행정법_나.pdf',other);
   const files=[{name:'첫째.zip',mimeType:'application/zip',buffer:await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'})},
     {name:'둘째.zip',mimeType:'application/zip',buffer:await z2.generateAsync({type:'nodebuffer'})}];
@@ -28,8 +32,8 @@ try{
   const modal=page.locator('#modal');await page.goto(url);await openBulk();
   const picking=page.waitForEvent('filechooser');await page.locator('#bulk-files').tap();await (await picking).setFiles(files);
   await page.locator('#bulk-register').waitFor();
-  assert.match(await page.locator('#bulk-counts').innerText(),/발견 6개 · 신규 4 · 등록 0 · 중복 1 · 실패 1/);
-  assert.equal((await snapshot()).documents.length,0);
+  assert.match(await page.locator('#bulk-counts').innerText(),/발견 7개 · 신규 4 · 등록 0 · 중복 1 · 실패 2/);
+  assert.match(await modal.textContent(),/암호가 설정된 PDF/);assert.equal((await snapshot()).documents.length,0);
   // Reload after preview: staged bytes and analysis summaries survive without another picker.
   await page.reload();await openBulk();await click('bulk-register');
   await page.waitForFunction(()=>document.querySelector('#scan-counts')?.textContent.includes('문항 분석 완료 3'));
@@ -72,10 +76,58 @@ try{
   assert.equal((await snapshot()).documents.length,28);
   await page.reload();await openBulk();await click('bulk-register');await page.waitForFunction(()=>document.querySelector('#bulk-counts')?.textContent.includes('등록 26'));
   assert.equal((await snapshot()).documents.length,30);await click('bulk-finish');await modal.waitFor({state:'hidden'});
+  // Pause during preview. A new native selection can have a different modification time.
+  const recovery=new Zip();
+  for(let i=0;i<6;i++)recovery.file('2022/국가직9급/행정학_'+i+'.pdf',Buffer.concat([long,Buffer.from('\n% recovery '+i)]));
+  const retryZip={name:'회복.zip',mimeType:'application/zip',buffer:await recovery.generateAsync({type:'nodebuffer',compression:'DEFLATE'})};
+  await click('bring');await page.evaluate(()=>{
+    const original=IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put=function(value,...args){
+      if(this.name==='meta'&&value?.status==='ready'){
+        IDBObjectStore.prototype.put=original;document.querySelector('#bulk-pause').click();
+      }
+      return original.call(this,value,...args);
+    };
+  });
+  await page.locator('#bulk-files').setInputFiles(retryZip);
+  await page.waitForFunction(()=>document.querySelector('#bulk-counts')?.textContent.includes('신규 1')&&document.querySelector('#bulk-preview'));
+  await page.reload();await openBulk();
+  await page.evaluate(()=>{
+    const original=IDBObjectStore.prototype.add;
+    IDBObjectStore.prototype.add=function(...args){
+      if(this.name==='files'){
+        IDBObjectStore.prototype.add=original;throw new DOMException('Synthetic storage limit','QuotaExceededError');
+      }
+      return original.apply(this,args);
+    };
+  });
+  await page.locator('#bulk-files').setInputFiles(retryZip);
+  await page.waitForFunction(()=>document.querySelector('#bulk-counts')?.textContent.includes('신규 5 · 등록 0 · 중복 0 · 실패 1'));
+  assert.match(await modal.textContent(),/저장 공간이 부족/);assert.equal((await snapshot()).events.length,1);
+  await click('bulk-retry');await page.waitForFunction(()=>document.querySelector('#bulk-counts')?.textContent.includes('신규 6 · 등록 0 · 중복 0 · 실패 0'));
+  await click('bulk-register');await page.waitForFunction(()=>document.querySelector('#scan-counts')?.textContent.includes('분석 완료 6'));
+  await click('bulk-library');await modal.waitFor({state:'hidden'});assert.equal((await snapshot()).documents.length,36);
+  // Select a real nested directory through the browser's directory picker.
+  const directory=await mkdtemp(join(tmpdir(),'yu-folder-'));
+  try{
+    await mkdir(join(directory,'2022','지방직9급'),{recursive:true});
+    await writeFile(join(directory,'2022','지방직9급','행정법_라.pdf'),Buffer.concat([paper,Buffer.from('\n% folder')]));
+    await click('bring');
+    if(await page.locator('#bulk-folder').count()){
+      await page.locator('#bulk-folder').setInputFiles(directory);
+      await page.locator('#bulk-register').waitFor();await click('bulk-register');
+      await page.waitForFunction(()=>document.querySelector('#scan-counts')?.textContent.includes('분석 완료 1'));
+      const fromFolder=(await snapshot()).documents.find(d=>d.form==='라');
+      assert.equal(fromFolder.year,'2022');assert.equal(fromFolder.exam,'지방직 9급');
+      await click('bulk-library');
+    }else await modal.locator('form button').click();
+    await modal.waitFor({state:'hidden'});
+  }finally{await rm(directory,{recursive:true,force:true})}
   await page.waitForFunction(()=>navigator.serviceWorker.controller?.state==='activated');
   if(!tablet)await ctx.setOffline(true);
+  const closed=new Promise(resolve=>server.close(resolve));server.closeAllConnections();await closed;
   const offline=await page.reload();assert.equal(offline.fromServiceWorker(),true);
   await nav('자료실');await page.locator('[data-doc="'+law.id+'"]').click();
   await page.locator('.numbers [data-n="3"][aria-pressed=true]').waitFor();assert.deepEqual(errors,[]);
-  console.log('PASS '+(tablet?'WebKit':'Chromium')+' ZIP, nested NFC/NFD, DEFLATE/STORE, corrupt isolation, exact duplicates, grade/form, shared final key, 20/25 crops, reload/resume, batch pause, intact originals, trash/restore, inventory, ZIP backup/merge and offline study.');
-}finally{await ctx.close();server.close();clearTimeout(stop)}
+  console.log('PASS '+(tablet?'WebKit':'Chromium')+' ZIP, nested NFC/NFD, DEFLATE/STORE, corrupt/encrypted file isolation, exact duplicates, grade/form, shared final key, 20/25 crops, reload/resume, batch pause, quota retry, interrupted preview/reselection, nested directory where supported, intact originals, trash/restore, inventory, ZIP backup/merge and offline study.');
+}finally{await ctx.close();if(server.listening)server.close();clearTimeout(stop)}
