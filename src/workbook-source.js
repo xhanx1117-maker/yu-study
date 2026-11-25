@@ -8,7 +8,10 @@ import {loadPrintFont,printFont} from './print-font.js';
 
 // Cache only compact coordinates/text keyed by the immutable source, never PDF pages or bitmaps.
 const repairedSources=new Map();
-export function printCacheSize(){return repairedSources.size}
+export function printCacheBytes(){
+  let bytes=0;for(const map of repairedSources.values())bytes+=new Blob([JSON.stringify(map)]).size;
+  return bytes;
+}
 export function clearPrintCache(){repairedSources.clear()}
 
 export async function renderArea(page, region, scale, signal, maxPixels=7500000){

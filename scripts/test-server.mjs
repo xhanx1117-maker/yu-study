@@ -11,7 +11,7 @@ export function testServer({sourceModules=false}={}){
       res.setHeader('Content-Type','text/html');res.end('<!DOCTYPE html><html lang="ko"><title>Print proof</title></html>');return;
     }
     if(sourceModules && /^\/proof-src\/[a-z-]+\.js$/.test(pathname)){
-      const file=path.join(path.resolve('src'),path.basename(pathname));
+      const file=path.join(path.resolve(process.env.YU_TEST_SOURCE||'src'),path.basename(pathname));
       if(!fs.existsSync(file)){res.writeHead(404).end();return}
       res.setHeader('Content-Type','application/javascript');fs.createReadStream(file).pipe(res);return;
     }

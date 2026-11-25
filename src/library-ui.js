@@ -52,7 +52,7 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory}){
   function draw(){
     const needle=searchKey(f.query).trim();
     current=rows.filter(({d,text})=>!!d.deleted===f.trash&&(!f.subject||f.subject===d.subject)&&(!f.year||String(d.year)===f.year)&&
-      (!f.exam||f.exam===d.exam)&&(!f.status||studyState(d,stats.get(d.id))===f.status)&&(!f.review||d.reviewReasons?.length||d.analysisState==='error')&&text.includes(needle));
+      (!f.exam||f.exam===d.exam)&&(!f.status||studyState(d,stats.get(d.id))===f.status)&&(!f.review||d.reviewReasons?.length||d.analysisState==='error'||d.analysisState==='manual')&&text.includes(needle));
     page=0;selected.clear();paint();
   }
   const search=bindSearch(at('query'),value=>{f.query=value;draw()});
@@ -104,7 +104,7 @@ function bulkEdit(docs,s,refresh){
     const order=new Map(docs.map((d,i)=>[d.id,i+1]));
     await change(v=>{
       for(const d of v.documents)if(order.has(d.id)){
-        if(sub!=='변경 안 함')changeDocumentSubject(v,d,sub);if(year)d.year=year;if(exam)d.exam=exam;
+        if(sub!=='변경 안 함')changeDocumentSubject(v,d,sub);if(year)d.year=year;if(exam){d.exam=exam;const grade=exam.match(/[1-9]급/);if(grade)d.grade=grade[0]}
         if(verified)d.reviewReasons=[];
         if(pattern){const fields={'연도':d.year,'과목':d.subject,'시험':d.exam,'책형':d.form,'제목':d.title,'번호':order.get(d.id)};
           const next=pattern.replace(/\{(연도|과목|시험|책형|제목|번호)\}/g,(_,k)=>fields[k]||'').replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').replace(/\.pdf$/i,'').trim();if(!next)throw Error('파일명이 비어 있습니다.');d.title=next;d.filename=next+'.pdf'}

@@ -3,6 +3,7 @@
 !.gitignore
 !README.md
 !PROGRESS.md
+!PERFORMANCE.md
 !licenses/pdfium.txt
 !index.html
 !package.json

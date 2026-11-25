@@ -101,7 +101,7 @@ export async function importMenu({refresh,restore,manual},initialFiles){
   }
   async function overview(){
     const s=summary(rows),opts=job.options,docs=(await state()).documents.filter(d=>d.importId===job.id&&!d.deleted);
-    const scanErrors=docs.filter(d=>d.analysisState==='error'),scanQueue=docs.filter(d=>d.analysisState==='queued'),done=docs.filter(d=>d.scanned).length;
+    const scanErrors=docs.filter(d=>d.analysisState==='error'),scanQueue=docs.filter(d=>d.analysisState==='queued'),manual=docs.filter(d=>d.analysisState==='manual').length,done=docs.filter(d=>d.scanned&&d.analysisState!=='manual').length;
     const checkbox=(key,label)=>'<label><input type="checkbox" data-bulk-option="'+key+'" '+(opts[key]?'checked':'')+'> '+label+'</label>';
     const describe=m=>[...m].map(([k,v])=>k+' '+v+'개').join(' · ')||'—';
     const failures=rows.filter(r=>r.error),reviews=rows.filter(r=>r.info?.reviewReasons?.length&&['ready','registered'].includes(r.status)),missing=rows.some(r=>(r.status==='pending'||r.status==='failed')&&!sources.has(r.id));
@@ -114,7 +114,7 @@ export async function importMenu({refresh,restore,manual},initialFiles){
       (s.ready||s.pending?'<details class="box"><summary>가져오기 설정</summary>'+checkbox('skip','동일 파일 자동 건너뛰기')+checkbox('classify','과목·연도 자동 분류')+checkbox('link','정답지 자동 연결')+checkbox('analyse','저장 후 문항 영역 분석')+'</details>':'')+
       (!opts.skip&&s.duplicate?'<details class="box" open><summary>동일 원본 '+s.duplicate+'개 · 기존 자료 유지</summary>'+esc(rows.filter(r=>r.status==='duplicate').slice(0,40).map(r=>r.path).join(' · '))+'</details>':'')+
       (failures.length||job.problems.length?'<details class="box"><summary>가져오기 오류</summary><ul>'+[...job.problems,...failures.map(r=>r.path+' · '+r.error)].slice(0,100).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></details>':'')+
-      (docs.length?'<p id="scan-counts">문항 분석 완료 '+done+' · 대기 '+scanQueue.length+' · 분석 오류 '+scanErrors.length+'</p>':'')+
+      (docs.length?'<p id="scan-counts">문항 분석 완료 '+done+' · 대기 '+scanQueue.length+' · 직접 영역 확인 '+manual+' · 분석 오류 '+scanErrors.length+'</p>':'')+
       '<div class="row">'+(s.pending&&sources.size?btn('bulk-preview','미리보기 재개'):'')+
       (s.ready?btn('bulk-register','일괄 등록 · '+s.ready+'개',true):'')+(s.failed&&sources.size?btn('bulk-retry','실패한 파일만 재시도'):'')+
       (scanQueue.length||scanErrors.length?btn('bulk-analyse','문항 분석 재개'):'')+

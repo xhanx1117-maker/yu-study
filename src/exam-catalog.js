@@ -8,9 +8,11 @@ const exams=[
   ['서울시',/서울(?:시|특별시)/],['국가직',/국가(?:직|공무원|[579]급)|인사혁신처/],['지방직',/지방(?:직|공무원|[579]급)|지방자치단체/]
 ];
 const unique=values=>[...new Set(values.filter(Boolean))];
-function extract(text){
+function extract(text,customExams){
   const flat=text.normalize('NFC').replace(/\s+/g,''),date=flat.match(/((?:19|20)\d{2})[.년/-](\d{1,2})[.월/-](\d{1,2})(?:일|\.|\b)/);
   const kind=exams.filter(([,pattern])=>pattern.test(flat)).map(([name])=>name);
+  const custom=customExams.filter(name=>flat.includes(name.normalize('NFC').replace(/\s+/g,'')));
+  if(custom.length)kind.push(...custom);
   const foundSubjects=subjects.filter(subject=>flat.includes(subject));
   const form=flat.match(/(?:책형|문제형|책자형별|형별)[:：_(-]*([가나다라마바사아A-F])(?:형|\b|$|[)\s])/i)
     ||text.match(/(?:^|[-_ (\s])([가나다라마바사아A-F])\s*(?:책?형|책|(?=[_. )/]|$))/i);
@@ -27,9 +29,10 @@ export function fingerprint(text){
   if(words.length<10)return [];
   return unique(words.map(word=>{let h=2166136261;for(let i=0;i<word.length;i++)h=Math.imul(h^word.charCodeAt(i),16777619);return h>>>0})).sort((a,b)=>a-b).slice(0,32);
 }
-export function classifyExam(path,{heading='',sample='',pages=0,scanned=false,explicitCount=0}={}){
+export function classifyExam(path,{heading='',sample='',pages=0,scanned=false,explicitCount=0}={},examTypes=[]){
   const normalized=path.normalize('NFC'),filename=normalized.split('/').at(-1),title=filename.replace(/\.pdf$/i,'');
-  const parts=[extract(title),extract(heading),extract(normalized.split('/').slice(0,-1).join(' / '))],reasons=[];
+  const custom=examTypes.filter(name=>name&&name!=='기타'&&!commonExams.includes(name)&&!exams.some(([base])=>base===name));
+  const parts=[title,heading,normalized.split('/').slice(0,-1).join(' / ')].map(text=>extract(text,custom)),reasons=[];
   function resolve(key,label){
     const values=unique(parts.flatMap(p=>Array.isArray(p[key])?p[key]:[p[key]]));
     if(values.length>1)reasons.push(label+' 불일치');

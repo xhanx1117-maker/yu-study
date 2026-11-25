@@ -15,6 +15,8 @@ test('normalized title, header, folder and ambiguous information',()=>{
   const d=classifyExam('2025/지방9급/행정법총론-D.pdf'.normalize('NFD'),{heading:'2025년 지방공무원 9급 행정법 총론',pages:4});
   assert.deepEqual([d.subject,d.year,d.exam,d.grade,d.form],['행정법','2025','지방직 9급','9급','D']);
   assert.deepEqual(d.reviewReasons,[]);
+  const custom=classifyExam('2025/가상교육청 채용/행정학 개론.pdf',{},['가상교육청 채용','기타','국가직 9급']);
+  assert.deepEqual([custom.exam,custom.subject,custom.reviewReasons],['가상교육청 채용','행정학',[]]);
   const conflict=classifyExam('2026/국가직 9급/행정학_가.pdf',{heading:'2025 지방직 7급 행정법'});
   for(const key of ['과목','연도','시험','급수'])assert.ok(conflict.reviewReasons.some(v=>v.includes(key)));
   assert.equal(classifyExam('스캔.pdf',{scanned:true}).subject,'미분류');

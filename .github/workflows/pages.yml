@@ -44,6 +44,20 @@ jobs:
       - run: node scripts/browser-test.mjs
         env:
           YU_TEST_ENGINE: webkit
+      - name: Check out the previously deployed archive
+        uses: actions/checkout@v4
+        with:
+          ref: b333720a2d2012adb9e41c75c361aeea33297d9f
+          path: baseline-v041
+      - name: Upgrade an installed v0.4.1 archive in Chromium and tablet WebKit
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" baseline-v041/node_modules
+          npm --prefix baseline-v041 run build
+          node scripts/browser-test.mjs
+          YU_TEST_ENGINE=webkit node scripts/browser-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+          YU_PREVIOUS_DIST: baseline-v041/dist
       - name: Verify tablet WebKit composition, editing and offline search
         run: node scripts/search-test.mjs
         env:

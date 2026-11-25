@@ -20,10 +20,10 @@ export function storageTools(app,s){
     let staged=0;if(pending){
       const {jobRows}=await import('./bulk-import.js');for(const row of await jobRows(pending))if(row.status==='ready'&&!byHash.has(row.hash))staged+=row.size;
     }
-    const {printCacheSize}=await import('./workbook-source.js');
+    const {printCacheBytes}=await import('./workbook-source.js');
     const meta=new Blob([JSON.stringify(s)]).size+s.documents.reduce((n,d)=>n+(d.externalRegions?d.analysisBytes||0:0),0);
-    details.querySelector('p').innerHTML='등록 원본 '+byHash.size+'개 · '+size(total)+(unavailable?' · 크기 확인 불가 '+unavailable+'개':'')+'<br>'+[...bySubject].map(([sub,n])=>esc(sub)+' '+size(n)).join(' · ')+
-      '<br>정답지 '+size(answers)+' · 오답·메타데이터 약 '+size(meta)+'<br>가져오기 임시 원본 '+size(staged)+' · 저장된 썸네일 0 KB · 메모리의 인쇄 좌표 '+printCacheSize()+'건<br>브라우저 추정 사용량 '+(estimate?size(estimate.usage):'확인 불가')+
+    details.querySelector('p').innerHTML='등록 원본(휴지통 포함) '+byHash.size+'개 · '+size(total)+(unavailable?' · 크기 확인 불가 '+unavailable+'개':'')+'<br>'+[...bySubject].map(([sub,n])=>esc(sub)+' '+size(n)).join(' · ')+
+      '<br>정답지 '+size(answers)+' · 오답·메타데이터 약 '+size(meta)+'<br>가져오기 임시 원본 '+size(staged)+' · 저장된 썸네일 0 KB · 메모리의 인쇄 좌표 약 '+size(printCacheBytes())+'<br>브라우저 추정 사용량 '+(estimate?size(estimate.usage):'확인 불가')+
       ' / 추정 한도 '+(estimate?.quota?size(estimate.quota):'확인 불가')+'<br>최근 백업 '+esc(s.lastBackup?.slice(0,10)||'아직 없음');
   }
   details.ontoggle=guard(measure);

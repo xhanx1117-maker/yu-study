@@ -1,7 +1,7 @@
 import {change} from './db.js';
 
 export function pdfPicker(){
-  return '<label id="import" class="btn primary file-picker"><span>＋ PDF·ZIP 가져오기</span><input id="pdf-files" type="file" accept=".pdf,.zip,application/pdf,application/zip" multiple aria-label="PDF 가져오기"></label>';
+  return '<label id="import" class="btn primary file-picker"><span>＋ PDF·ZIP 가져오기</span><input id="pdf-files" type="file" accept=".pdf,.zip,application/pdf,application/zip" multiple aria-label="PDF·ZIP 가져오기"></label>';
 }
 
 export function importError(error){

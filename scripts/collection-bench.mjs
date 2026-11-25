@@ -2,15 +2,26 @@ import {testServer} from './test-server.mjs';
 import {fixturePaper} from './bulk-fixture.mjs';
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 const {chromium}=createRequire(import.meta.url)('playwright');
 const server=testServer({sourceModules:true});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const browser=await chromium.launch({headless:true,executablePath:process.env.YU_BROWSER});
 const base=(await fixturePaper(20,true)).toString('base64');
+const system=process.platform==='linux'?await browser.newBrowserCDPSession():null;
+async function residentKiB(){
+  if(!system)return 0;
+  const {processInfo}=await system.send('SystemInfo.getProcessInfo');
+  const sizes=await Promise.all(processInfo.map(async({id})=>{
+    const status=await readFile('/proc/'+id+'/status','utf8').catch(()=>'');
+    return Number(status.match(/^VmRSS:\s+(\d+)/m)?.[1]||0);
+  }));
+  return sizes.reduce((n,size)=>n+size,0);
+}
 try{
   for(const n of (process.env.YU_BENCH_COUNTS||'100,500,1000').split(',').map(Number)){
     const context=await browser.newContext({viewport:{width:834,height:1194},hasTouch:true}),page=await context.newPage(),cd=await context.newCDPSession(page);
     await page.goto('http://127.0.0.1:'+server.address().port+'/yu-study/proof.html');
-    let pending=false,peak=0;const monitor=setInterval(async()=>{if(pending)return;pending=true;try{const {usedSize}=await cd.send('Runtime.getHeapUsage');peak=Math.max(peak,usedSize)}catch{}finally{pending=false}},400);
+    const initialRSS=await residentKiB();let pending=false,peak=0,peakRSS=initialRSS;const monitor=setInterval(async()=>{if(pending)return;pending=true;try{const {usedSize}=await cd.send('Runtime.getHeapUsage');peak=Math.max(peak,usedSize);peakRSS=Math.max(peakRSS,await residentKiB())}catch{}finally{pending=false}},400);
     try{
       const result=await page.evaluate(async({base,n})=>{
         const {makeZip}=await import('/proof-src/archive-zip.js');
@@ -24,8 +35,8 @@ try{
         await bulk.preview(job,rows,input.sources,control,noop);
         if(rows.some(r=>r.status!=='ready'))throw Error('Failed preview '+JSON.stringify(rows.find(r=>r.status!=='ready')));
         const p=performance.now();await bulk.register(job,rows,control,noop);const r=performance.now();
-        // Sample full quality scanning separately from the measured all-file import.
-        // The same queue is exercised to completion in bulk-test. Pause at a file boundary.
+        // Split the same analysis queue at a file boundary to time a six-question export.
+        // Resume the remaining PDFs and verify the final question counts below.
         await bulk.analyse(job,control,(_doc,i)=>{if(i===2)control.pause=true});
         const a=performance.now();let s=await db.state();const completed=s.documents.filter(d=>d.analysisState==='done');
         if(completed.length!==3||completed.some(d=>d.count!==20))throw Error('Invalid sample analysis count: '+completed.map(d=>d.count));
@@ -41,7 +52,7 @@ try{
         return {count:s.documents.length,zipBytes:zip.size,previewMs:Math.round(p-t),registerMs:Math.round(r-p),scanThreeMs:Math.round(a-r),
           fullScanMs,workbookSixMs:Math.round(end-start),workbookPages:prepared.plan.pages.length,outputBytes:printed.file.size,storageEstimate:usage};
       },{n,base});
-      assert.equal(result.count,n);console.log(JSON.stringify({...result,sampledPeakJSHeapMiB:Math.round(peak/1048576)}));
+      assert.equal(result.count,n);console.log(JSON.stringify({...result,sampledPeakJSHeapMiB:Math.round(peak/1048576),...(initialRSS?{initialBrowserRSSMiB:Math.round(initialRSS/1024),peakBrowserRSSMiB:Math.round(peakRSS/1024)}:{})}));
     }finally{clearInterval(monitor);await context.close()}
   }
 }finally{await browser.close();server.close()}

@@ -91,7 +91,7 @@ export async function preview(job,rows,sources,control,report,failedOnly=false){
           if(row.size>budget)throw new DOMException('예상 저장 공간 부족','QuotaExceededError');
           // Blob construction snapshots provider bytes before PDF.js transfers the buffer to its worker.
           const durable=new Blob([bytes],{type:'application/pdf'}),probe=await probePdf(bytes,worker);
-          const info=classifyExam(row.path,probe),near=possibleDuplicate({...info,hash},buckets.get(identityBucket(info)));
+          const info=classifyExam(row.path,probe,archive.examTypes),near=possibleDuplicate({...info,hash},buckets.get(identityBucket(info)));
           if(near)info.reviewReasons.push('중복 후보 · '+near.title);
           Object.assign(row,{info,status:'ready',error:''});await storePreview(job,row,durable);
           known.add(hash);index({...info,hash});budget-=row.size;
@@ -158,7 +158,8 @@ export async function analyse(job,control,report,{retry=false}={}){
       const docs=new Map(s.documents.map(d=>[d.id,d]));
       for(const {doc,map,error} of batch){
         const current=docs.get(doc.id);
-        if(!current||current.deleted||current.hash!==doc.hash||current.scanned||!['queued','error'].includes(current.analysisState))continue;
+        if(!current||current.deleted||current.hash!==doc.hash||!['queued','error'].includes(current.analysisState))continue;
+        if(current.scanned){current.analysisState='done';continue}
         if(error){current.analysisState='error';current.analysisError=error;continue}
         const nums=Object.keys(map).map(Number).sort((a,b)=>a-b);
         if(nums.length){

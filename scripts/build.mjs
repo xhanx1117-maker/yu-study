@@ -43,14 +43,18 @@ export async function buildApp(portable=true){
   await copy(path.join(mods,'pdf-lib/dist/pdf-lib.min.js'),'vendor/pdf-lib.min.js');
   await copy(path.join(mods,'pdf-lib/LICENSE.md'),'vendor/pdf-lib-LICENSE.txt');
   const files=(await list(dist)).filter(x=>x!=='sw.js').sort();
-  const hash=createHash('sha256');
+  const hash=createHash('sha256').update('verified-shell-v2');
   for(const f of files)hash.update(f).update(await readFile(path.join(dist,f)));
   const cache='yu-study-shell-'+hash.digest('hex').slice(0,16);
+  const indexIntegrity='sha256-'+createHash('sha256').update(await readFile(path.join(dist,'index.html'))).digest('base64');
   await writeFile(path.join(dist,'sw.js'),`const cache=${JSON.stringify(cache)}, files=${JSON.stringify(files)}.map(p=>new URL(p,self.registration.scope).href);
-self.addEventListener('install',e=>e.waitUntil(caches.open(cache).then(c=>c.addAll(files))));
+const assets=new Set(files);
+self.addEventListener('install',e=>e.waitUntil(caches.open(cache).then(c=>c.addAll(files.map(url=>new Request(url,{
+  cache:'reload',integrity:url===new URL('index.html',self.registration.scope).href?${JSON.stringify(indexIntegrity)}:''
+}))))));
 self.addEventListener('message',e=>{if(e.data?.type==='APPLY_UPDATE')e.waitUntil((async()=>{const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});if(windows.filter(c=>c.url.startsWith(self.registration.scope)).length>1){e.ports[0]?.postMessage({applied:false});return}await self.skipWaiting();e.ports[0]?.postMessage({applied:true})})())});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(names=>Promise.all(names.filter(n=>n.startsWith('yu-study-shell-')&&n!==cache).map(n=>caches.delete(n)))).then(()=>self.clients.claim())));
-self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||!e.request.url.startsWith(self.registration.scope))return;const url=e.request.mode==='navigate'?new URL('index.html',self.registration.scope).href:e.request.url;if(files.includes(url))e.respondWith(caches.open(cache).then(c=>c.match(url)).then(r=>r||fetch(e.request)));});`);
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||!e.request.url.startsWith(self.registration.scope))return;const url=e.request.mode==='navigate'?new URL('index.html',self.registration.scope).href:e.request.url;if(assets.has(url))e.respondWith(caches.open(cache).then(c=>c.match(url)).then(r=>r||fetch(e.request)));});`);
   console.log('Built',files.length,'static resources:',cache);
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))await buildApp();

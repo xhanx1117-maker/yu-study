@@ -52,7 +52,11 @@ async function show(name=section,id,number){section=name;app.ondrop=app.ondragov
    return;
  }
  if(turn!==revision)return;
- on('pdf-files',e=>{const files=[...e.target.files];return files.length>1||/\.zip$/i.test(files[0]?.name||'')?openImport(files):imports(files)},'change');
+ on('pdf-files',e=>{
+   const files=[...e.target.files];
+   if(files.length>1||/\.zip$/i.test(files[0]?.name||'')){e.target.value='';return openImport(files)}
+   return imports(files);
+ },'change');
  if(name==='홈')app.querySelectorAll('[data-doc]').forEach(b=>b.onclick=guard(()=>show('자료실',b.dataset.doc)));
  if(name!=='자료실'){app.ondragover=null;app.ondrop=null}
 }
