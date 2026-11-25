@@ -1,0 +1,37 @@
+name: Compare rendered public originals
+on:
+  push:
+    branches: [public-render-check-v04]
+permissions:
+  contents: read
+jobs:
+  rendered:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts && npm run build
+      - run: python -m pip install --quiet --break-system-packages pymupdf pillow numpy
+      - name: Compare rendered sheets with independent source text and pixels
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+          YU_PRINT_GEOMETRY: '1'
+          YU_PROOF_DIR: ${{ runner.temp }}/fictional
+        run: |
+          node scripts/print-proof.mjs
+          python3 - <<'PY'
+          import pathlib, os, urllib.request, urllib.parse, subprocess
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          for subject in ['행정법총론','행정학개론']:
+              url='https://d2u7om5rih5x7z.cloudfront.net/'+urllib.parse.quote(f'exam-archive/공무원/국가직/9급/2026/{subject}/original/2026_{subject}.pdf')
+              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+              source=root/'published-paper.pdf'
+              source.write_bytes(urllib.request.urlopen(req,timeout=35).read())
+              output=root/'print.pdf'
+              subprocess.run(['node','scripts/print-proof.mjs',str(source),subject,','.join(map(str,range(1,21))),str(output)],check=True)
+              examples=[str(root/'fictional'/'law-b4-to-a4-p1.png'),str(root/'fictional'/'admin-b4-to-a4-p1.png')] if subject=='행정학개론' else []
+              subprocess.run(['python3','scripts/compare-proof.py',str(source),str(output),*examples],check=True)
+          PY
