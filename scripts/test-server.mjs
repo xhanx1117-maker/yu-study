@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root=path.resolve('dist');
+const root=path.resolve(process.env.YU_TEST_DIST || 'dist');
 const mime={'.html':'text/html','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.wasm':'application/wasm'};
 export function testServer({sourceModules=false}={}){
   return http.createServer((req,res)=>{

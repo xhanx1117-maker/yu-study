@@ -1,8 +1,28 @@
 import {examPixels,pageFrame,beforeLine,tightBand,regionVersion,repeatedPageEdges} from './exam-regions.js';
 const base=new URL('vendor/',document.baseURI);
 let engine;
-export async function openPdf(blob){engine??=await import(/* @vite-ignore */ new URL('pdf.min.mjs',base).href);engine.GlobalWorkerOptions.workerSrc=new URL('pdf.worker.min.mjs',base).href;
-return engine.getDocument({data:new Uint8Array(await blob.arrayBuffer()),cMapUrl:new URL('cmaps/',base).href,cMapPacked:true,standardFontDataUrl:new URL('standard_fonts/',base).href,wasmUrl:new URL('wasm/',base).href,useWorkerFetch:true,isEvalSupported:false}).promise}
+async function pdfEngine(){
+  engine??=await import(/* @vite-ignore */ new URL('pdf.min.mjs',base).href);
+  engine.GlobalWorkerOptions.workerSrc=new URL('pdf.worker.min.mjs',base).href;
+  return engine;
+}
+export async function batchWorker(){return (await pdfEngine()).PDFWorker.create({})}
+export async function openPdf(blob,worker){
+  await pdfEngine();
+  const data=blob instanceof Uint8Array?blob:new Uint8Array(await blob.arrayBuffer());
+  const task=engine.getDocument({data,worker,cMapUrl:new URL('cmaps/',base).href,cMapPacked:true,standardFontDataUrl:new URL('standard_fonts/',base).href,wasmUrl:new URL('wasm/',base).href,useWorkerFetch:true,isEvalSupported:false});
+  try{return await task.promise}catch(error){await task.destroy().catch(()=>{});throw error}
+}
+export async function probePdf(data,worker){
+  const pdf=await openPdf(data,worker);
+  try{
+    const page=await pdf.getPage(1),lines=pageText(page.getViewport({scale:1}),await textContent(page));
+    const heading=lines.filter(l=>l.y<.21 && !numberPrefix.test(l.str)).slice(0,28).map(l=>l.str).join(' ');
+    const sample=lines.slice(0,320).map(l=>l.str).join(' ');
+    const explicitCount=heading.match(/(?:총|전체)\s*(\d{1,3})\s*문항/);
+    return {heading,sample,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};
+  }finally{await pdf.destroy()}
+}
 export async function paint(pdf,page,canvas,width=1100,region=null){const p=await pdf.getPage(page),v=p.getViewport({scale:1}),scale=Math.min(3,width/v.width),vp=p.getViewport({scale}),r=region||{x:0,y:0,w:1,h:1};canvas.width=Math.max(1,Math.ceil(vp.width*r.w));canvas.height=Math.max(1,Math.ceil(vp.height*r.h));await p.render({canvasContext:canvas.getContext('2d'),viewport:vp,transform:[1,0,0,1,-vp.width*r.x,-vp.height*r.y]}).promise}
 async function textContent(page){
  // Some Safari versions support stream readers but not async stream iteration.
