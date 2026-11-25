@@ -51,6 +51,17 @@ export function mountNotebook(app,archive,hooks){
     '<div class="notebook-foot">'+button('mistake-trash','오답 휴지통'+(archive.removedMistakes?.length?' ('+new Set(archive.removedMistakes.flatMap(b=>b.events.map(e=>e.q))).size+')':''))+analysisControls()+'</div>';
 
   const filterPanel=$('#filters'),groupPanel=$('#group-panel'),themesPanel=$('.theme-options');
+  const panels=[themesPanel,filterPanel,groupPanel];
+  function dismissFilters(e){
+    if($('#modal').open || e.isComposing || e.keyCode===229)return;
+    if(e.type==='keydown' && e.key==='Escape'){
+      const panel=panels.find(p=>p.open&&p.contains(e.target));
+      if(panel){panel.open=false;panel.querySelector('summary').focus();e.preventDefault()}
+    }else if(e.type==='click' && !e.target.closest('button,label,input,textarea,select,a,summary,.notebook-tools,dialog')){
+      for(const panel of panels)panel.open=false;
+    }
+  }
+  app.addEventListener('keydown',dismissFilters);app.addEventListener('click',dismissFilters);
   const field=$('#f-search'),themeField=$('#f-theme-search'),grid=$('.filter-grid'),cards=$('.notebook-list');
   filterPanel.open=filtersOpen;groupPanel.open=groupOpen;
   filterPanel.ontoggle=()=>{if(filterPanel.isConnected)filtersOpen=filterPanel.open};
@@ -178,5 +189,5 @@ export function mountNotebook(app,archive,hooks){
   on('nb-prev',()=>{page--;drawList();app.scrollIntoView()});on('nb-next',()=>{page++;drawList();app.scrollIntoView()});
   bindAnalysis(archive,()=>list,()=>scope.catalog,hooks.refresh);
   drawScope();
-  return ()=>{search.dispose();themeSearch.dispose()};
+  return ()=>{app.removeEventListener('keydown',dismissFilters);app.removeEventListener('click',dismissFilters);search.dispose();themeSearch.dispose()};
 }

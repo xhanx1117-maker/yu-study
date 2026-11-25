@@ -52,6 +52,13 @@ jobs:
         run: node scripts/workbook-test.mjs
         env:
           YU_TEST_ENGINE: webkit
+      - name: Render scaled B4 papers and check final choices in both tablet engines
+        run: |
+          node scripts/print-proof.mjs
+          YU_TEST_ENGINE=webkit node scripts/print-proof.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+          YU_PROOF_DIR: ${{ runner.temp }}/workbook-proof
       - name: Save synthetic PDF render comparisons
         uses: actions/upload-artifact@v4
         with:

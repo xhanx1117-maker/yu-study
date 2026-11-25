@@ -4,9 +4,17 @@ import path from 'node:path';
 
 const root=path.resolve('dist');
 const mime={'.html':'text/html','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.wasm':'application/wasm'};
-export function testServer(){
+export function testServer({sourceModules=false}={}){
   return http.createServer((req,res)=>{
     const pathname=new URL(req.url,'http://localhost').pathname;
+    if(sourceModules && pathname==='/yu-study/proof.html'){
+      res.setHeader('Content-Type','text/html');res.end('<!DOCTYPE html><html lang="ko"><title>Print proof</title></html>');return;
+    }
+    if(sourceModules && /^\/proof-src\/[a-z-]+\.js$/.test(pathname)){
+      const file=path.join(path.resolve('src'),path.basename(pathname));
+      if(!fs.existsSync(file)){res.writeHead(404).end();return}
+      res.setHeader('Content-Type','application/javascript');fs.createReadStream(file).pipe(res);return;
+    }
     if(pathname==='/seed.html'){
       res.setHeader('Content-Type','text/html');
       res.end('<!doctype html><title>Isolated storage test</title>');

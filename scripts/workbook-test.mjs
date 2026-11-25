@@ -66,6 +66,27 @@ try{
   const detail=id=>page.locator('[data-detail="'+id+'"]').click();
   const summary=async(sel)=>{const el=page.locator(sel);if(!(await el.evaluate(x=>x.open)))await el.locator('summary').first().click()};
   await nav('오답노트');
+  for(const width of [390,834,1194]){
+    await page.setViewportSize({width,height:900});
+    assert.ok(await page.locator('#print').evaluate(b=>{
+      const summary=b.closest('.notebook-summary'),filters=document.querySelector('.notebook-tools'),list=document.querySelector('.notebook-list');
+      return summary.contains(document.querySelector('#edit-notebook')) && filters.getBoundingClientRect().bottom<=summary.getBoundingClientRect().top+1 &&
+        summary.getBoundingClientRect().bottom<=list.getBoundingClientRect().top+1 && b.getBoundingClientRect().right<=innerWidth+1;
+    }));
+  }
+  await page.setViewportSize({width:834,height:1194});
+  await detail('law#1');await page.locator('#memo').fill('unsaved draft');
+  page.once('dialog',dialog=>dialog.dismiss());await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#memo').inputValue(),'unsaved draft');
+  page.once('dialog',dialog=>dialog.accept());await page.keyboard.press('Escape');
+  await page.locator('#modal').waitFor({state:'hidden'});
+  await click('print');
+  assert.equal(await page.locator('#print-mode').inputValue(),'two');
+  const box=await page.locator('#modal').boundingBox();
+  await page.mouse.move(box.x+12,box.y+14);await page.mouse.down();
+  await page.mouse.move(2,2,{steps:8});await page.mouse.up();
+  assert.equal(await page.locator('#modal').isVisible(),true);
+  await page.mouse.click(2,2);await page.locator('#modal').waitFor({state:'hidden'});
   for(const [subject,n] of [['국어',2],['영어',1],['행정법',8],['행정학',1]])assert.equal(await page.locator('[data-subject="'+subject+'"] b').textContent(),String(n));
   await tab('행정학');await summary('#filters');assert.equal(await page.locator('[data-ft="case"]').count(),0);
   await page.locator('#f-part').selectOption('part');await page.locator('#f-chapter').selectOption('chapter');await hasCount(1);
@@ -237,6 +258,17 @@ try{
   assert.deepEqual(current.events.filter(e=>e.q==='law#1').map(e=>e.id).sort(),['law-repeat#1','law-session#1']);
   assert.equal(current.questions.find(q=>q.id==='law#1').theme,'example');
   assert.equal(current.questions.find(q=>q.id==='older#1').theme,'example');
+  await nav('오답노트');await tab('행정법');await click('mistake-trash');
+  await click('empty-trash');await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#confirm-purge').isVisible(),true);
+  await click('cancel-purge');await page.locator('[data-trash-pick="law#8"]').check();await click('purge-selected');
+  assert.match(await page.locator('#modal section p').first().textContent(),/문항 1개의 오답 이력 1회/);
+  await click('confirm-purge');await page.locator('#modal').waitFor({state:'hidden'});
+  await click('mistake-trash');await page.getByText('휴지통이 비었습니다.').waitFor();await close();
+  await detail('law#1');await click('reanalyze');
+  await page.locator('#region-which').waitFor();
+  assert.equal(await page.locator('#region-pick').isDisabled(),true);
+  await page.locator('#region-old canvas').first().waitFor();await close();
   const fileHashes=await page.evaluate(async()=>{
     const db=await new Promise(res=>{const r=indexedDB.open('yu-study-archive',1);r.onsuccess=()=>res(r.result)});
     const store=db.transaction('files').objectStore('files');
