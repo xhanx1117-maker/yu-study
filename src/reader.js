@@ -1,5 +1,6 @@
 import {state,get,change} from './db.js';
 import {record,stats} from './model.js';
+import {regionRecord,protectedRegion} from './region-records.js';
 import {openPdf,paint,detect} from './pdf.js';
 import {$,esc,notice,guard,on,action} from './ui.js';
 import {download} from './backup.js';
@@ -7,8 +8,9 @@ import {download} from './backup.js';
 function savedRegions(doc,archive){
  const map={...doc.detected};
  for(const q of archive.questions){
-   if(q.doc!==doc.id||!q.regions?.length||map[q.number]?.regions?.length||map[q.number]?.reviewed)continue;
-   map[q.number]={regions:q.regions,text:q.text||'',reviewed:q.reviewed!==false};
+   if(q.doc!==doc.id)continue;
+   const crop=regionRecord(doc,q);
+   if(crop.regions?.length || crop.reviewed===true)map[q.number]={regions:crop.regions,text:crop.text||'',reviewed:protectedRegion(crop),regionVersion:crop.regionVersion};
  }
  return map;
 }
@@ -23,10 +25,10 @@ export async function reader(id,alive,questionNumber){
  function overlay(){if(!alive())return;const p=$('.paper'),rs=detected[regionN]?.regions||[];p.querySelectorAll('.rect').forEach(x=>x.remove());for(const r of rs.filter(r=>r.page===page)){const el=document.createElement('i');el.className='rect';Object.assign(el.style,{left:r.x*100+'%',top:r.y*100+'%',width:r.w*100+'%',height:r.h*100+'%'});p.append(el)}$('#reginfo').textContent=regionN+'번 · 영역 '+rs.length+'개 · '+(detected[regionN]?.reviewed?'수동 지정':'검수 필요')}
  async function draw(){const token=++rev,cv=document.createElement('canvas');await paint(pdf,page,cv,1100*zoom);if(!alive()||token!==rev)return;$('.paper canvas').replaceWith(cv);$('.paper').style.width=zoom*100+'%';$('#pg').value=page;overlay();await saveDoc(x=>{x.page=page;x.opened=new Date().toISOString()})}
  async function go(n){page=Math.min(pdf.numPages,Math.max(1,Number(n)||1));await draw()}
- async function updateRegions(fn){await saveDoc((x,v)=>{const map=x.detected||={},row=map[regionN]||{regions:[]};fn(row.regions);map[regionN]={...row,reviewed:true,text:'',regions:row.regions};x.detected=map;const q=v.questions.find(q=>q.doc===id&&q.number===regionN);if(q)Object.assign(q,map[regionN]);detected=map});overlay()}
- async function scan(){if(busy)return;busy=true;notice('문항 위치를 분석하고 있습니다.');try{const map=await detect(pdf,d.count);await saveDoc((x,v)=>{const rows=savedRegions(x,v);for(const [key,row] of Object.entries(map)){if(!rows[key]?.reviewed){rows[key]=row;const q=v.questions.find(q=>q.doc===id&&q.number===+key);if(q)Object.assign(q,row)}}x.detected=rows;x.scanned=true;detected=rows});overlay();if(alive())notice(Object.keys(map).length+'개 문항을 인식했습니다. 영역을 확인하세요.')}finally{busy=false}}
+ async function updateRegions(fn){await saveDoc((x,v)=>{const map=savedRegions(x,v),row=map[regionN]||{regions:[]};fn(row.regions);map[regionN]={...row,reviewed:true,text:'',regions:row.regions};x.detected=map;const q=v.questions.find(q=>q.doc===id&&q.number===regionN);if(q)Object.assign(q,map[regionN]);detected=map});overlay()}
+ async function scan(){if(busy)return;busy=true;notice('문항 위치를 분석하고 있습니다.');try{const map=await detect(pdf,d.count);await saveDoc((x,v)=>{const rows=savedRegions(x,v);for(const [key,row] of Object.entries(map)){if(!protectedRegion(rows[key])){rows[key]=row;const q=v.questions.find(q=>q.doc===id&&q.number===+key);if(q)Object.assign(q,row)}}x.detected=rows;x.scanned=true;detected=rows});overlay();if(alive())notice(Object.keys(map).length+'개 문항을 인식했습니다. 영역을 확인하세요.')}finally{busy=false}}
  $('.numbers').onclick=e=>{const b=e.target.closest('[data-n]');if(!b)return;const n=+b.dataset.n;selected.has(n)?selected.delete(n):selected.add(n);b.classList.toggle('selected',selected.has(n));b.setAttribute('aria-pressed',selected.has(n));regionN=n;$('#rn').value=n;overlay()};
- on('save',async()=>{const nums=[...selected];await saveDoc((x,v)=>{record(v,x,session,nums);for(const q of v.questions.filter(q=>q.doc===id)){if(x.detected?.[q.number])Object.assign(q,x.detected[q.number])}});await panel();notice('오답을 저장했습니다.')});
+ on('save',async()=>{const nums=[...selected];await saveDoc((x,v)=>{record(v,x,session,nums);for(const q of v.questions.filter(q=>q.doc===id)){const crop=regionRecord(x,q);if(crop!==q)Object.assign(q,crop)}});await panel();notice('오답을 저장했습니다.')});
  on('sessions',async e=>{session=e.target.value;await saveDoc(x=>{x.session=session});await panel()},'change');
  on('newSession',async()=>{session=crypto.randomUUID();await saveDoc((x,v)=>{v.sessions.push({id:session,doc:id,date:new Date().toISOString()});x.session=session});await panel()});
  on('prev',()=>go(page-1));on('next',()=>go(page+1));on('pg',e=>go(e.target.value),'change');on('zoom',async()=>{zoom=zoom===1?1.5:zoom===1.5?2:1;await draw()});on('original',()=>download(blob,d.title+'.pdf'));

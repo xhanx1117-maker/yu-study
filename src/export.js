@@ -124,6 +124,21 @@ export async function writeWorkbook(prepared, title, signal, progress){
             const clipped=await lib.PDFDocument.load(bytes,{updateMetadata:false});
             const candidate=clipped.getPage(0),resources=candidate.node.Resources();
             // Reject resource dictionaries that could carry unused image/form streams.
+            // The worker kept only self-contained text and paths. PDFium can leave
+            // old, unused image/form resource entries after regenerating the stream.
+            // Only prune them if the regenerated content never invokes an XObject.
+            const xObjects=resources?.lookup(lib.PDFName.of('XObject'));
+            if(xObjects?.keys?.().length){
+              const streams=candidate.node.Contents();
+              const all=streams instanceof lib.PDFArray?streams.asArray():[streams];
+              const unused=all.every(ref=>{
+                const stream=clipped.context.lookup(ref);
+                if(!(stream instanceof lib.PDFRawStream))return false;
+                const data=lib.decodePDFRawStream(stream).decode();
+                return !/\bDo\b/.test(new TextDecoder('latin1').decode(data));
+              });
+              if(unused)resources.delete(lib.PDFName.of('XObject'));
+            }
             if(!['XObject','Pattern','Shading','Properties'].some(name=>resources?.lookup(lib.PDFName.of(name))?.keys?.().length)){
               candidate.node.delete(lib.PDFName.of('Annots'));candidate.node.delete(lib.PDFName.of('Metadata'));
               vectorPage=candidate;

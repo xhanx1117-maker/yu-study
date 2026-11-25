@@ -1,5 +1,6 @@
 import {get} from './db.js';
-import {openPdf} from './pdf.js';
+import {openPdf,detect} from './pdf.js';
+import {needsRepair,regionRecord} from './region-records.js';
 import {sortRows} from './notebook-model.js';
 import {planWorkbook,printSettings} from './workbook-layout.js';
 
@@ -92,6 +93,25 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
   const options=printSettings(input),seen=new Set(),originalPages=new Map(),partsByDoc=new Map();
   const docs=new Map(archive.documents.map(d=>[d.id,d]));
   let unique=rows.filter(row=>!seen.has(row.id)&&seen.add(row.id));
+  if(options.mode!=='original'){
+    const repaired=new Map(),groups=new Map();
+    for(const row of unique){
+      if(!groups.has(row.doc.id))groups.set(row.doc.id,[]);
+      groups.get(row.doc.id).push(row);
+    }
+    for(const group of groups.values()){
+      const doc=group[0].doc;
+      if(!group.some(row=>needsRepair(regionRecord(doc,row.question))))continue;
+      signal.throwIfAborted();
+      const pdf=await openPdf(await get('files',doc.hash));
+      try{repaired.set(doc.id,await detect(pdf,doc.count,{signal,progress}))}finally{await pdf.destroy()}
+    }
+    unique=unique.map(row=>{
+      const previous=regionRecord(row.doc,row.question),next=repaired.get(row.doc.id)?.[row.question.number];
+      const crop=needsRepair(previous)&&next?.regions.length?next:previous;
+      return {...row,question:{...row.question,regions:crop.regions||[],reviewed:crop.reviewed,text:crop.text}};
+    });
+  }
   if(options.order!=='current')unique=sortRows(unique,options.order);
   const themeFor=row=>row.linked.find(t=>filters.themeIds?.includes(t.id))||row.linked[0];
   if(options.sections)unique=[...unique].sort((a,b)=>{
@@ -116,7 +136,8 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
     passagesByDoc.get(doc.id).push(r);
   }
   for(const doc of new Set(unique.map(row=>row.doc))){
-    for(const q of Object.values(doc.detected||{}))for(const r of q.regions||[])if(r.shared)mark(doc,r);
+    for(const q of Object.values(doc.detected||{}))if(!needsRepair(q))
+      for(const r of q.regions||[])if(r.shared)mark(doc,r);
   }
   for(const {doc,question} of unique){
     for(const r of question.regions){
@@ -193,6 +214,17 @@ export async function prepareWorkbook(archive,rows,filters,input,signal,progress
         page.cleanup();
       }
     }finally{await pdf.destroy()}
+  }
+  for(const pages of partsByDoc.values()){
+    const lanes=new Map();
+    for(const parts of pages.values())for(const part of parts){
+      if(part.oneColumn||part.wholePage||part.width>part.pageWidth*.60)continue;
+      const key=part.pageWidth+'x'+part.pageHeight;
+      lanes.set(key,Math.max(lanes.get(key)||0,part.width));
+    }
+    for(const parts of pages.values())for(const part of parts){
+      if(!part.oneColumn && !part.wholePage && part.width<=part.pageWidth*.60)part.laneWidth=lanes.get(part.pageWidth+'x'+part.pageHeight);
+    }
   }
   const ctx=document.createElement('canvas').getContext('2d');
   const measure=(text,size)=>{ctx.font=size+'px sans-serif';return ctx.measureText(text).width};

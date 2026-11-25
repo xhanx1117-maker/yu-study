@@ -33,13 +33,13 @@ function clip(pageNo,[left,bottom,right,top]){
       const obj=api.FPDFPage_GetObject(page,i),type=api.FPDFPageObj_GetType(obj);
       // Images, nested forms, shadings and boundary-crossing objects are instead
       // painted into a physically cropped high-resolution tile. No hidden page form.
-      if((type!==1&&type!==2)||!api.FPDFPageObj_GetBounds(obj,ptr,ptr+4,ptr+8,ptr+12))return null;
+      if(!api.FPDFPageObj_GetBounds(obj,ptr,ptr+4,ptr+8,ptr+12))return null;
       const vals=new Float32Array(memory.HEAPU8.buffer,ptr,4),[l,b,r,t]=vals;
       if(![l,b,r,t].every(Number.isFinite))return null;
       if(r<=left||l>=right||t<=bottom||b>=top){
         if(!api.FPDFPage_RemoveObject(page,obj))return null;
         api.FPDFPageObj_Destroy(obj);
-      }else if(l>=left&&r<=right&&b>=bottom&&t<=top)kept++;
+      }else if((type===1||type===2)&&l>=left&&r<=right&&b>=bottom&&t<=top)kept++;
       else return null;
     }
     if(!kept || !api.FPDFPage_GenerateContent(page))return null;
