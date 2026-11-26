@@ -19,8 +19,8 @@ export async function openPdf(blob,worker,signal){
   const cancel=()=>task.destroy().catch(()=>{});signal?.addEventListener('abort',cancel,{once:true});
   try{return await task.promise}catch(error){await task.destroy().catch(()=>{});throw error}finally{signal?.removeEventListener('abort',cancel)}
 }
-export async function probePdf(data,worker,path=''){
-  const pdf=await openPdf(data,worker);
+export async function probePdf(data,worker,path='',signal){
+  const pdf=await openPdf(data,worker,signal);
   try{
     const page=await pdf.getPage(1),lines=pageText(page.getViewport({scale:1}),await textContent(page));
     const first=Math.min(.21,...markerLines(lines,300).filter(l=>l.x<.35).map(l=>l.y));
@@ -30,6 +30,7 @@ export async function probePdf(data,worker,path=''){
     let tailSample='';
     // A question paper may append explanations after the last question. Inspect
     // one additional text page without rendering or scanning the whole file.
+    signal?.throwIfAborted();
     const namedCompanion=/정답지|정답표|해설지|해설집|answer[\s_-]*key|solutions?/i.test(path.split('/').at(-1)+' '+heading);
     if(pdf.numPages>1&&!namedCompanion&&!explanationMarkers(sample)){
       const last=await pdf.getPage(pdf.numPages);

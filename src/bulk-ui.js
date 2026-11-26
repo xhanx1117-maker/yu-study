@@ -1,5 +1,6 @@
 import {$,esc,modal,notice,guard} from './ui.js';
 import {state,exclusive} from './db.js';
+import {materialKind} from './materials.js';
 import {discover,currentJob,jobRows,startJob,saveJob,preview,summary,register,analyse,finishJob} from './bulk-import.js';
 
 const mb=n=>(n/1048576).toFixed(1)+' MB';
@@ -13,7 +14,10 @@ export async function importMenu({refresh,restore,manual},initialFiles){
   const folderSupported='webkitdirectory' in document.createElement('input');
   function bind(id,fn,event='click'){section.querySelector('#'+id)?.addEventListener(event,guard(fn))}
   function show(html){section=modal('<h2>자료 가져오기</h2>'+html);section.setAttribute('aria-busy',String(busy))}
-  function closed(){control?.abort?.();sources.clear();if(changed)guard(refresh)()}
+  function closed(){
+    control?.abort?.();sources.clear();
+    if(changed){const kinds=new Set(rows.filter(r=>r.status==='registered'&&r.info).map(r=>materialKind(r.info)));guard(refresh)(kinds.size===1?[...kinds][0]:'문제지')}
+  }
   dialog.addEventListener('close',closed,{once:true});
   function buttons(){
     return '<div class="row">'+fileControl('bulk-files','PDF·ZIP 선택','.pdf,.zip,application/pdf,application/zip')+

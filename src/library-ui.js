@@ -11,7 +11,9 @@ import {makeZip} from './archive-zip.js';
 
 const defaults={subject:'',year:'',exam:'',status:'',query:'',trash:false,review:false,kind:'문제지',extra:'',order:'연도순',page:0,filterOpen:false};
 const filters={...defaults};
-export function resetLibrary(subject=''){Object.assign(filters,defaults,{subject})}
+export function resetLibrary(subject='',kind='문제지'){
+  Object.assign(filters,defaults,{subject},kind==='기타 자료'?{extra:kind}:{kind});
+}
 export const librarySnapshot=()=>({...filters});
 export function restoreLibrary(view){Object.assign(filters,defaults,view)}
 export function paperCard(d,manage=false,group=null,inTrash=false){
@@ -44,8 +46,19 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
       for(const group of [k,'전체 자료']){const key=group+'|'+sub;subjectCounts.set(key,(subjectCounts.get(key)||0)+1)}
     }
   }
-  const rows=docs.map(d=>({d,text:searchKey([d.title,d.filename,d.tags,d.agency,d.form].filter(Boolean).join(' '))}))
-    .sort((a,b)=>Number(!!b.d.favorite)-Number(!!a.d.favorite)||String(b.d.year||'').localeCompare(String(a.d.year||''))||titleOrder.compare(a.d.title||'',b.d.title||''));
+  const rows=docs.map(d=>({d,year:String(d.year||''),text:searchKey([d.title,d.filename,d.tags,d.agency,d.form].filter(Boolean).join(' '))}));
+  const sorted=new Map();
+  function ordered(order){
+    if(!sorted.has(order)){
+      const title=(a,b)=>titleOrder.compare(a.d.title||'',b.d.title||'');
+      const year=(a,b)=>b.year.localeCompare(a.year)||title(a,b);
+      const favorite=(a,b)=>Number(!!b.d.favorite)-Number(!!a.d.favorite)||year(a,b);
+      const recent=(a,b)=>String(b.d.opened||'').localeCompare(String(a.d.opened||''))||favorite(a,b);
+      const compare={'제목순':title,'연도순':year,'즐겨찾기순':favorite,'최근 열람순':recent}[order]||year;
+      sorted.set(order,[...rows].sort(compare));
+    }
+    return sorted.get(order);
+  }
   app.innerHTML='<div class="toolbar">'+action(f.trash?'trash-back':'scope-back','‹ 뒤로')+'<h1>'+(f.trash?'자료실 휴지통':'자료실')+'</h1><div class="row">'+action('bring','자료 가져오기','primary')+action('inventory','보유 현황')+action('library-edit','편집')+action('trash',f.trash?'자료실 보기':'휴지통')+'</div></div>'+
     '<div id="kind-tabs" class="subject-tabs" aria-label="자료 유형"></div><div id="lib-subjects" class="subject-tabs" aria-label="자료 과목"></div><label>제목·태그 검색<input id="query" type="search" value="'+esc(f.query)+'"></label><details class="box library-filters" '+(f.filterOpen?'open':'')+'><summary>필터 및 정렬</summary><div class="row filters"><label>과목<select id="subject">'+options(['전체 과목',...subjects,'통합','미분류'],f.subject)+'</select></label><label>연도<select id="year">'+options(['전체 연도',...new Set(active.map(d=>String(d.year||'')).filter(Boolean).sort().reverse())],f.year)+'</select></label>'+
     '<label>시험<select id="exam">'+options(['전체 시험',...new Set([...s.examTypes,...active.map(d=>d.exam).filter(Boolean)])],f.exam)+'</select></label><label>풀이 상태<select id="study-filter">'+options(['전체 상태',...studyStates],f.status)+'</select></label>'+
@@ -104,7 +117,7 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
   function draw(reset=true){
     tabs();
     const needle=searchKey(f.query).trim();
-    current=rows.filter(({d,text})=>!!d.deleted===f.trash&&(f.kind==='전체 자료'||materialKind(d)===(f.extra==='기타 자료'?'기타 자료':f.kind))&&coversSubject(d,f.subject)&&(!f.year||String(d.year)===f.year)&&
+    current=ordered(f.order).filter(({d,text})=>!!d.deleted===f.trash&&(f.kind==='전체 자료'||materialKind(d)===(f.extra==='기타 자료'?'기타 자료':f.kind))&&coversSubject(d,f.subject)&&(!f.year||String(d.year)===f.year)&&
       (!f.exam||f.exam===d.exam)&&(!f.status||studyState(d,stats.get(d.id))===f.status)&&(!f.review||d.reviewReasons?.length||d.analysisState==='error'||d.analysisState==='manual')&&text.includes(needle)&&extraMatch(d));
     function extraMatch(d){
       const group=index.groups.get(d.id);
@@ -118,9 +131,6 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
         default:return true;
       }
     }
-    if(f.order==='제목순')current.sort((a,b)=>titleOrder.compare(a.d.title,b.d.title));
-    else if(f.order==='최근 열람순')current.sort((a,b)=>String(b.d.opened||'').localeCompare(a.d.opened||''));
-    else if(f.order==='연도순')current.sort((a,b)=>String(b.d.year||'').localeCompare(a.d.year||'')||titleOrder.compare(a.d.title||'',b.d.title||''));
     if(reset)page=0;selected.clear();paint();
   }
   const search=bindSearch(at('query'),value=>{if(!f.query&&value)checkpoint();f.query=value;draw()});
@@ -139,7 +149,7 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
     if(b?.dataset.purgeOne)return purge([id]);
     if(b?.dataset.favorite){
       let value;await change(v=>{const doc=v.documents.find(x=>x.id===id);if(doc)value=doc.favorite=!doc.favorite});
-      d.favorite=value;if(f.extra==='즐겨찾기'||f.order==='즐겨찾기순')return refresh();
+      d.favorite=value;sorted.delete('즐겨찾기순');sorted.delete('최근 열람순');if(f.extra==='즐겨찾기'||f.order==='즐겨찾기순')return refresh();
       b.textContent=value?'★':'☆';b.setAttribute('aria-pressed',String(value));return;
     }
     if(b?.dataset.variants)return chooseVariant(g[b.dataset.variants],next=>open(next,g.paper?.id));

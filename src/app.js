@@ -97,7 +97,7 @@ async function runRestore(merge=false){
 }
 async function openImport(files){
   const {importMenu}=await import('./bulk-ui.js');
-  return importMenu({refresh:()=>{resetLibrary();return show('자료실')},restore:()=>runRestore(),manual:async()=>{
+  return importMenu({refresh:kind=>{resetLibrary('',kind);return show('자료실')},restore:()=>runRestore(),manual:async()=>{
     const files=await pick('application/pdf,.pdf',true);if(!files.length)return;
     const dialog=$('#modal');await new Promise(resolve=>{dialog.addEventListener('close',resolve,{once:true});dialog.close()});return imports(files);
   }},files);
@@ -107,7 +107,7 @@ function values(){const count=+$('#num').value,title=$('#title').value.trim();if
 async function imports(files){
   if(!files.length||$('#modal').open)return;
   const dialog=$('#modal'),picker=$('#pdf-files');
-  let index=0,saved=0,busy=false,controller;
+  let index=0,saved=0,busy=false,controller;const savedKinds=new Set();
   function preventBusyClose(e){if(busy)e.preventDefault()}
   dialog.addEventListener('cancel',preventBusyClose);
   dialog.addEventListener('close',()=>{
@@ -115,7 +115,7 @@ async function imports(files){
     if(picker)picker.value='';
     if(saved)guard(async()=>{
       // An earlier subject/year/trash filter must not hide newly imported files.
-      resetLibrary();
+      resetLibrary('',savedKinds.size===1?[...savedKinds][0]:'문제지');
       await show('자료실');
       notice(saved+'개 PDF를 이 기기에 저장했습니다.');
     })();
@@ -127,15 +127,19 @@ async function imports(files){
     modal('<h2>PDF 가져오기 · '+index+' / '+files.length+'</h2><p>자료 정보를 불러오는 중…</p>');
     const archive=await state();
     if(!dialog.open)return;
-    const defaults=classifyExam(file.name);
+    const defaults=classifyExam(file.name,undefined,archive.examTypes);
     modal('<h2>PDF 가져오기 · '+index+' / '+files.length+'</h2>'+
       '<p class="sub">'+esc(file.name)+' · '+(file.size/1048576).toFixed(1)+' MB</p>'+
       fields(defaults,archive)+
-      '<p id="import-progress" role="status" aria-live="polite">과목과 문항 수를 확인한 뒤 등록하세요. 선택한 PDF는 이 기기에 저장됩니다.</p>'+
+      '<p id="import-progress" role="status" aria-live="polite">등록 시 PDF에서 자료 유형과 시험 정보를 확인합니다. 직접 수정한 값은 우선 적용합니다.</p>'+
       '<progress id="import-meter" max="100" hidden></progress>'+
       '<p id="import-error" class="import-error" role="alert" hidden></p>'+
       '<div class="row">'+action('add','등록','primary')+
       action('skip','건너뛰기')+action('read-cancel','읽기 취소')+'</div>',{protectEdits:true});
+    const touched=new Set(),names={sub:'subject',yr:'year',et:'exam',num:'count',type:'type',title:'title',tags:'tags'};
+    const section=dialog.querySelector('section');
+    const track=e=>{if(names[e.target.id])touched.add(names[e.target.id])};
+    for(const event of ['input','change'])section.addEventListener(event,track);
     $('#read-cancel').hidden=true;
     on('skip',next);
     on('read-cancel',()=>controller?.abort());
@@ -156,6 +160,12 @@ async function imports(files){
       try{
         await savePdf(file,metadata,{
           signal:controller.signal,
+          inferMetadata(probe){
+            const inferred=classifyExam(file.name,probe,archive.examTypes);
+            for(const key of Object.values(names))if(touched.has(key)||metadata[key]!==defaults[key])inferred[key]=metadata[key];
+            if(touched.has('count'))inferred.countLocked=true;
+            metadata=inferred;return inferred;
+          },
           onProgress(label,percent){
             message.textContent=label+(percent==null?'…':' · '+percent+'%');
             meter.hidden=false;
@@ -163,7 +173,7 @@ async function imports(files){
             if(label==='기기에 저장 중')cancel.disabled=true;
           }
         });
-        saved++;
+        saved++;savedKinds.add(materialKind(metadata));
         complete=true;
       }catch(e){
         error.textContent=importError(e);

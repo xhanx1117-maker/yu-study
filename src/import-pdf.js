@@ -31,7 +31,7 @@ function readFile(file,signal,onProgress){
   });
 }
 
-export async function savePdf(file,metadata,{signal,onProgress}){
+export async function savePdf(file,metadata,{signal,onProgress,inferMetadata}){
   if(!file.size)throw Error('선택한 파일이 비어 있습니다. 파일 앱에서 PDF 다운로드를 완료한 뒤 다시 선택하세요.');
   onProgress('저장 공간 확인 중');
   const estimate=await navigator.storage?.estimate?.().catch(()=>undefined);
@@ -50,6 +50,17 @@ export async function savePdf(file,metadata,{signal,onProgress}){
   signal.throwIfAborted();
   const id=crypto.randomUUID(),session=crypto.randomUUID(),created=new Date().toISOString();
   const blob=new Blob([buffer],{type:'application/pdf'});
+  if(inferMetadata){
+    onProgress('자료 유형 및 시험 정보 확인 중');
+    const {probePdf}=await import('./pdf.js');
+    try{metadata=inferMetadata(await probePdf(new Uint8Array(buffer),undefined,file.name,signal))}
+    catch(error){
+      signal.throwIfAborted();
+      if(error.name==='PasswordException')throw Error('암호가 설정된 PDF입니다. 암호 해제 후 다시 선택하세요.');
+      metadata={...metadata,reviewReasons:[...new Set([...(metadata.reviewReasons||[]),'원문 자동 분류 확인 필요'])]};
+    }
+    signal.throwIfAborted();
+  }
   onProgress('기기에 저장 중');
   await change(archive=>{
     const duplicate=archive.documents.find(doc=>doc.hash===key);

@@ -100,7 +100,18 @@ try{
   await page.locator('#bulk-files').setInputFiles({name:'연습.zip',mimeType:'application/zip',buffer:await zip.generateAsync({type:'nodebuffer'})});
   await page.locator('#bulk-register').waitFor();assert.match(await page.locator('#modal').innerText(),/해설지 2/);await click('bulk-register');await click('bulk-library');
   const imported=(await snapshot()).documents.find(d=>d.title.includes('추가'));assert.equal(imported.type,'문제·해설 혼합');assert.equal(imported.analysisState,'off');
+  await page.locator('[data-kind="해설지"][aria-pressed=true]').waitFor();
   const mixed=(await snapshot()).documents.find(d=>d.title==='행정학_시험지');assert.equal(mixed.type,'문제·해설 혼합');assert.equal(mixed.analysisState,'off');
+  async function single(name,tag,override){
+    await nav('홈');await page.locator('#pdf-files').setInputFiles({name,mimeType:'application/pdf',buffer:Buffer.concat([await appended.save(),Buffer.from('\n%'+tag)])});
+    await page.locator('#add').waitFor();
+    if(override){await page.locator('#type').selectOption('정답지');await page.locator('#title').fill('직접 수정한 정답표')}
+    await click('add');await page.locator('#modal').waitFor({state:'hidden'});
+    await page.locator('[data-kind="'+(override?'정답지':'해설지')+'"][aria-pressed=true]').waitFor();
+    return (await snapshot()).documents.find(d=>d.filename===name);
+  }
+  assert.equal((await single('2024_국가직9급_행정학.pdf','single')).type,'문제·해설 혼합');
+  const manual=await single('2023_국가직9급_행정법.pdf','manual',true);assert.equal(manual.type,'정답지');assert.equal(manual.title,'직접 수정한 정답표');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);await ctx.setOffline(true);await page.reload();
   await nav('자료실');await page.locator('[data-card="paper"] [data-open-material="key"]').click();await heading(key.title);await loaded();
   await switchDoc('paper',paper.title);assert.equal(await page.locator('#pg').inputValue(),'2');assert.equal(await page.locator('.paper').evaluate(el=>el.style.width),'150%');
