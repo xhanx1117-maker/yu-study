@@ -14,6 +14,8 @@ test('same-form shared key, multiple solutions and explicit unlink survive metad
   for(const changes of [{form:'나'},{form:''},{round:'2'},{count:25},{grade:'7급'},{date:'2022-01-02'},{recruitmentYear:'2021'}]){
     assert.equal(materialIndex([paper,{...key,...changes}]).groups.get('p').answers.length,0);
   }
+  const earlier={...paper,round:''},unspecified={...key,round:''};
+  assert.deepEqual(materialIndex([earlier,unspecified,{...paper,id:'other-round'}]).groups.get('p').answers,[]);
   assert.deepEqual(materialIndex([{...paper,answerIds:[]},key]).groups.get('p').answers,[]);
   assert.equal(missingMaterials(index,'행정학')[0].필요자료,'해설지');
   const doc={...paper,hash:'original',detected:{1:{reviewed:true}},analysisState:'queued'};

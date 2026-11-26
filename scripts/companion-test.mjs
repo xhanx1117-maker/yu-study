@@ -8,8 +8,7 @@ const require=createRequire(import.meta.url),{chromium,webkit}=require('playwrig
 const tablet=process.env.YU_TEST_ENGINE==='webkit',server=testServer({sourceModules:true});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base='http://127.0.0.1:'+server.address().port,url=base+'/yu-study/';
-const browser=await (tablet?webkit:chromium).launch({headless:true,...(tablet?{}:{executablePath:process.env.YU_BROWSER})});
-const ctx=await browser.newContext({viewport:{width:834,height:1194},hasTouch:true,isMobile:tablet});
+const ctx=await (tablet?webkit:chromium).launchPersistentContext('',{headless:true,...(tablet?{}:{executablePath:process.env.YU_BROWSER}),viewport:{width:834,height:1194},hasTouch:true,isMobile:tablet});
 try{
   const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
   await page.addInitScript(()=>Object.defineProperty(navigator,'standalone',{configurable:true,value:true}));
@@ -95,4 +94,4 @@ try{
   await nav('자료실');await page.locator('[data-card="paper"] [data-open-material="key"]').click();await heading(key.title);await loaded();
   await switchDoc('paper',paper.title);assert.equal(await page.locator('#pg').inputValue(),'2');assert.equal(await page.locator('.paper').evaluate(el=>el.style.width),'150%');
   assert.deepEqual(errors,[]);console.log('PASS '+(tablet?'WebKit':'Chromium')+' companion roles, matching, selected draft, scroll/zoom, detail return, edge/vertical gesture, mixed ZIP, protected source, purge interruption and offline restart.');
-}finally{await browser.close();server.close()}
+}finally{await ctx.close();server.close()}

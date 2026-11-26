@@ -2,7 +2,7 @@
 // browser state contains only a position; screen snapshots live in this tab.
 export function navigation(capture,restore,allowDismiss){
   const token=crypto.randomUUID(),saved=new Map(),dialog=document.querySelector('#modal');
-  let at=0,overlay=null,replaying=false,rebound=false,popping=false;
+  let at=0,overlay=null,replaying=false,rebound=false,popping=false,closingFrom=null;
   const mark=()=>({yu:token,at});
   history.replaceState(mark(),'');history.scrollRestoration='manual';
   function remember(){
@@ -23,16 +23,24 @@ export function navigation(capture,restore,allowDismiss){
   function dismiss(){if(dialog.open)dialog.close()}
   window.addEventListener('yu-dialog-open',e=>{
     if(replaying)return;
-    step();overlay={opener:e.detail||''};
+    if(!overlay)step();overlay={opener:e.detail||''};
   });
   dialog.addEventListener('close',()=>{
     if(dialog.open||!overlay||replaying||popping)return;
-    popping=true;history.back();
+    closingFrom=at;popping=true;history.back();
   });
   window.addEventListener('popstate',async e=>{
     if(e.state?.yu!==token)return;
     if(rebound){rebound=false;popping=false;return}
     const dest=e.state.at,wasOverlay=!!overlay,approved=popping;popping=false;
+    if(closingFrom!==null&&dest===closingFrom-1){
+      // Removing the history entry of a closed dialog is bookkeeping. An
+      // import or save may already have taken the app to its result screen.
+      const nextOverlay=overlay;closingFrom=null;at=dest;overlay=null;
+      if(dialog.open){step();overlay=nextOverlay}
+      return;
+    }
+    closingFrom=null;
     if(!approved&&dialog.open&&!allowDismiss()){
       rebound=true;history.go(at-dest);return;
     }
@@ -53,8 +61,9 @@ export function navigation(capture,restore,allowDismiss){
   document.addEventListener('touchstart',e=>{
     touch=null;
     if(!standalone()||!at||e.touches.length!==1||e.touches[0].clientX>26||window.visualViewport?.scale>1.01)return;
-    if(e.target.closest('input,textarea,select,[contenteditable],.sheet,.check-list,.library-pick,.modal-panel,[data-pick]')||
-      document.querySelector('.paper.edit,#library-batch:not([hidden]),.pick-row')||String(getSelection()||''))return;
+    const sheet=e.target.closest('.sheet');if(sheet&&sheet.scrollWidth>sheet.clientWidth+2)return;
+    if(e.target.closest('input,textarea,select,[contenteditable],.check-list,.library-pick,.modal-panel,[data-pick]')||
+      !dialog.open&&document.querySelector('.paper.edit,#library-batch:not([hidden]),.pick-row')||String(getSelection()||''))return;
     const t=e.touches[0];touch={x:t.clientX,y:t.clientY,id:t.identifier};
   },{passive:true});
   document.addEventListener('touchmove',e=>{

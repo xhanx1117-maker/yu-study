@@ -32,10 +32,7 @@ const base=d=>JSON.stringify([norm(d.year),norm(d.exam).replace(/[1-9]급/g,'')]
 const grade=d=>norm(d.grade||d.exam?.match(/[1-9]\s*급/)?.[0]);
 const dimensions=['round','date','agency','recruitmentYear','rank'];
 const count=d=>d.countKnown||d.countLocked?Number(d.count):0;
-function comparable(p,c){
-  return grade(p)===grade(c)&&dimensions.every(k=>norm(p[k])===norm(c[k]))&&
-    (!count(p)||!count(c)||count(p)===count(c));
-}
+
 function possibleCompanion(p,c){
   if(grade(p)&&grade(c)&&grade(p)!==grade(c))return false;
   if(count(p)&&count(c)&&count(p)!==count(c))return false;
@@ -43,37 +40,58 @@ function possibleCompanion(p,c){
   const forms=[c.form,...(Array.isArray(c.forms)?c.forms:[])].filter(Boolean).map(norm);
   return !p.form||!forms.length||forms.includes(norm(p.form));
 }
-function acceptsForm(p,c,kind){
-  const forms=[c.form,...(Array.isArray(c.forms)?c.forms:[])].map(norm).filter(Boolean);
-  return p.form?forms.includes(norm(p.form)):kind==='해설지'&&!forms.length;
-}
+
 function append(map,key,value){const items=map.get(key);if(items)items.push(value);else map.set(key,[value])}
 const displayOrder=(a,b)=>priority(b)-priority(a)||String(a.title||'').localeCompare(b.title||'','ko')||String(a.id).localeCompare(b.id);
-const paperKey=d=>JSON.stringify([base(d),d.subject,grade(d),...dimensions.map(k=>norm(d[k])),norm(d.form)]);
+const formsOf=d=>[...new Set([d.form,...(Array.isArray(d.forms)?d.forms:[])].filter(Boolean).map(norm))];
+const dimensionsOf=d=>[grade(d),...dimensions.map(k=>norm(d[k]))];
 export function materialIndex(documents){
-  const byId=new Map(),attachments=new Map(),papers=new Map(),groups=new Map(),parents=new Map();
-  const active=documents.filter(d=>!d.deleted);
-  for(const d of active){
+  const byId=new Map(),broad=new Map(),exactGroups=new Map(),papersByForm=new Map(),groups=new Map(),parents=new Map();
+  const qualified=new Map(),paperScopes=new Map();
+  function scopeOf(d,sub,kind){return JSON.stringify([base(d),sub,kind])}
+  function identity(d){let key=qualified.get(d);if(!key){key=dimensionsOf(d);qualified.set(d,key)}return key}
+  function formGroup(d){return JSON.stringify([base(d),d.subject,norm(d.form)])}
+  for(const d of documents){
+    if(d.deleted)continue;
     byId.set(d.id,d);const kind=materialKind(d);
-    if(kind==='문제지')append(papers,paperKey(d),d);
-    else if(kind==='정답지'||kind==='해설지')append(attachments,base(d),d);
+    if(kind==='문제지'){append(papersByForm,formGroup(d),d);continue}
+    if(!['정답지','해설지'].includes(kind)||d.autoLink===false)continue;
+    for(const subject of subjects.filter(sub=>coversSubject(d,sub))){
+      const scope=scopeOf(d,subject,kind);append(broad,scope,d);
+      if(d.reviewReasons?.length)continue;
+      const forms=formsOf(d);if(kind==='해설지'&&!forms.length)forms.push('');
+      for(const form of forms)append(exactGroups,JSON.stringify([scope,identity(d),form]),d);
+    }
   }
-  for(const p of active){
+  // A paper lacking (for example) a round must not claim a key that could
+  // also belong to a dated variant. Reuse a projection per missing-field mask.
+  function plausiblePeers(p){
+    const form=formGroup(p),fields=identity(p),mask=fields.map(Boolean),scope=JSON.stringify([form,mask]);
+    if(!paperScopes.has(scope)){
+      const matches=new Map();for(const peer of papersByForm.get(form)||[])append(matches,JSON.stringify(identity(peer).filter((_,i)=>mask[i])),peer);
+      paperScopes.set(scope,matches);
+    }
+    return paperScopes.get(scope).get(JSON.stringify(fields.filter(Boolean)))||[];
+  }
+  for(const p of byId.values()){
     if(materialKind(p)!=='문제지')continue;
     const group={paper:p,answers:[],solutions:[],review:false,candidates:[]};groups.set(p.id,group);
-    const pool=attachments.get(base(p))||[],peerPapers=papers.get(paperKey(p));
     for(const [kind,field,choice] of [['정답지','answers','answerIds'],['해설지','solutions','solutionIds']]){
       const manual=p[choice]??(kind==='정답지'&&p.answerId?[p.answerId]:undefined);
       if(Array.isArray(manual)){
         group[field]=[...new Set(manual)].map(id=>byId.get(id)).filter(d=>d&&materialKind(d)===kind);
         if(group[field].length!==manual.length)group.review=true;
       }else if(p.autoLink!==false&&p.year&&p.exam&&subjects.includes(p.subject)){
-        const similar=pool.filter(d=>materialKind(d)===kind&&d.autoLink!==false&&coversSubject(d,p.subject)&&possibleCompanion(p,d));
-        const exact=similar.filter(d=>!p.reviewReasons?.length&&!d.reviewReasons?.length&&comparable(p,d)&&acceptsForm(p,d,kind)&&
-          !peerPapers.some(peer=>peer.id!==p.id&&(!count(peer)||!count(d)||count(peer)===count(d))));
+        const scope=scopeOf(p,p.subject,kind),matches=exactGroups.get(JSON.stringify([scope,identity(p),norm(p.form)]))||[];
+        const peers=matches.length?plausiblePeers(p):[];
+        const exact=p.reviewReasons?.length?[]:matches.filter(d=>(!count(p)||!count(d)||count(p)===count(d))&&
+          !peers.some(peer=>peer.id!==p.id&&(!count(peer)||!count(d)||count(peer)===count(d))));
         exact.sort(displayOrder);
         if(kind==='해설지'||exact.length===1||exact.length>1&&priority(exact[0])>priority(exact[1]))group[field]=exact;
-        if(!group[field].length&&similar.length){group.review=true;group.candidates.push(...similar)}
+        if(!group[field].length){
+          const similar=(broad.get(scope)||[]).filter(d=>possibleCompanion(p,d));
+          if(similar.length){group.review=true;group.candidates.push(...similar)}
+        }
       }
       for(const d of group[field])append(parents,d.id,p);
     }
