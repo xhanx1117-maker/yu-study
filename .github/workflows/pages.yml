@@ -1,7 +1,7 @@
 name: Test and publish Yu study
 on:
   push:
-    branches: [main, notebook-workbooks-v03, exam-print-v04, bulk-library-v05]
+    branches: [main, notebook-workbooks-v03, exam-print-v04, bulk-library-v05, library-companions-v06]
   workflow_dispatch:
 permissions:
   contents: read

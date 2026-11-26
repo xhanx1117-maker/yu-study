@@ -1,4 +1,5 @@
 import {subjects} from './model.js';
+import {materialIndex,mixedType} from './materials.js';
 
 export const studyStates=['미풀이','풀이 완료','복습 필요','복습 완료'];
 export const commonExams=['국가직 9급','국가직 7급','지방직 9급','지방직 7급','서울시','군무원','국회직','법원직','소방','경찰'];
@@ -38,7 +39,25 @@ export function classifyExam(path,{heading='',sample='',pages=0,scanned=false,ex
     if(values.length>1)reasons.push(label+' 불일치');
     return values[0]||'';
   }
-  const isAnswer=parts.some(p=>p.answer),possible=unique(parts.flatMap(p=>p.subjects));
+  const names=[title,heading,...normalized.split('/').slice(0,-1)].map(v=>v.normalize('NFC'));
+  // An outer collection can be named "문제지·정답지·해설지". Specific inner evidence wins.
+  const typeOf=value=>{
+    const flat=value.replace(/\s/g,'');
+    if(/문제(?:지)?[·+&와및_-]*해설|해설(?:수록|포함|판)|문제풀이집/.test(flat))return mixedType;
+    if(/해설(?:지|집|서)?|해설강의|풀이집|solutions?|commentary/i.test(flat))return '해설지';
+    if(/정답(?:지|표|안|가안|키)?|가답안|답안(?:지|표)|answer[_-]*key/i.test(flat))return '정답지';
+    if(/문제지|문제책|시험지|question[_-]*paper/i.test(flat))return '기출문제지';
+    return '';
+  };
+  const body=sample.slice(0,6500);
+  const bodyExplanation=(body.match(/(?:해설|정답\s*및\s*해설)\s*[:：】\]]/g)||[]).length>=2||
+    /(?:【해설】|\[해설\]|정답\s*[:：]\s*[①-⑤1-5]\s*(?:해설|풀이))/.test(body);
+  const evidence=[typeOf(title),typeOf(heading.split(/\b1[.)]/)[0].slice(0,240))].filter(Boolean);
+  const folder=names.slice(2).reverse().filter(x=>!(/문제/.test(x)&&/정답/.test(x))&&!(/정답/.test(x)&&/해설/.test(x))).map(typeOf).find(Boolean);
+  const hasNotes=bodyExplanation||evidence.some(v=>v==='해설지'||v===mixedType);
+  const type=hasNotes?(bodyExplanation||evidence.includes(mixedType)?mixedType:'해설지'):evidence[0]||folder||'기출문제지';
+  if(new Set(evidence).size>1&&!hasNotes)reasons.push('자료 유형 불일치');
+  const isAnswer=type==='정답지',possible=unique(parts.flatMap(p=>p.subjects));
   const combined=isAnswer&&parts.some(p=>p.combined||p.subjects.length>1);
   const subject=combined?'통합':resolve('subjects','과목')||'미분류';
   let exam=resolve('exams','시험');const grade=resolve('grades','급수'),year=resolve('years','연도');
@@ -47,7 +66,7 @@ export function classifyExam(path,{heading='',sample='',pages=0,scanned=false,ex
   if(parts[0].answer&&parts[1].explicitPaper&&!parts[1].answer || parts[1].answer&&parts[0].explicitPaper&&!parts[0].answer)reasons.push('문제지·정답지 불일치');
   if(!exam||!year||subject==='미분류')reasons.push('분류 정보 부족');
   if(scanned)reasons.push('텍스트 없는 PDF');
-  return {title,filename,subject,exam,grade,year,form,round,date,agency,type:isAnswer?'정답지':'기출문제지',combined,
+  return {title,filename,subject,exam,grade,year,form,round,date,agency,type,typeEvidence:!!(hasNotes||evidence.length||folder),combined,authority:isAnswer?(/비공식|강사|복원/.test(names.join(' '))?'비공식':/공식|인사혁신처|국방부|법원행정처|국회사무처/.test(names.join(' '))?'공식':''):'',
     answerSubjects:combined?possible:[],answerEdition:isAnswer?resolve('edition','정답 판본'):'',pages,
     count:explicitCount||20,countKnown:!!explicitCount,signature:fingerprint(sample),reviewReasons:unique(reasons)};
 }
@@ -66,22 +85,7 @@ export function possibleDuplicate(d,others){
     if(near||d.form&&other.form&&d.form!==other.form)return other;
   }
 }
-export function answerMatch(doc,documents){
-  if(doc.type==='정답지'||doc.autoLink===false||doc.deleted)return {answers:[]};
-  const usable=documents.filter(a=>a.type==='정답지'&&!a.deleted&&a.id!==doc.id);
-  if(doc.answerId){const chosen=usable.find(a=>a.id===doc.answerId);if(chosen)return {answers:[chosen]}}
-  if(!doc.year||!doc.exam||!subjects.includes(doc.subject))return {answers:[],review:true};
-  const candidates=usable.filter(a=>a.autoLink!==false&&a.year===doc.year&&baseExam(a.exam)===baseExam(doc.exam)&&dimensions(doc,a)&&
-    (a.subject===doc.subject||a.combined&&(!a.answerSubjects?.length||a.answerSubjects.includes(doc.subject))));
-  const exact=candidates.filter(a=>!a.reviewReasons?.length&&!doc.reviewReasons?.length&&
-    gradeOf(a)===gradeOf(doc)&&['round','form','date','agency'].every(k=>(a[k]||'')===(doc[k]||'')||a.combined&&k==='form'&&!a.form));
-  // A shared, unqualified key is safe only if its plausible papers do not have incompatible grades, dates, rounds or forms.
-  const safe=exact.filter(a=>!documents.some(p=>p.id!==doc.id&&!p.deleted&&p.type!=='정답지'&&p.year===doc.year&&baseExam(p.exam)===baseExam(doc.exam)&&
-    (p.subject===doc.subject||a.combined&&(a.answerSubjects?.includes(p.subject)||!a.answerSubjects?.length))&&
-    (['round','date','form','agency'].some(k=>!a[k]&&p[k]&&p[k]!==doc[k])||!gradeOf(a)&&gradeOf(p)&&gradeOf(p)!==gradeOf(doc))));
-  const preferred=safe.filter(a=>a.answerEdition==='최종'),pool=preferred.length?preferred:safe;
-  return pool.length===1?{answers:pool}:{answers:[],review:candidates.length>0,candidates};
-}
+export function answerMatch(doc,documents){return materialIndex(documents).groups.get(doc.id)||{answers:[]}}
 export function studyStats(s){
   const result=new Map(),sessions=new Map(s.sessions.map(a=>[a.id,a])),questions=new Map(s.questions.map(q=>[q.id,q.doc]));
   function entry(id){if(!result.has(id))result.set(id,{wrong:new Set(),attempts:0,solved:new Set(),lastSolved:'',lastReview:''});return result.get(id)}

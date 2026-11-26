@@ -24,11 +24,12 @@ test('normalized title, header, folder and ambiguous information',()=>{
 });
 test('only unambiguous answer keys link, prefer final and keep variants separate',()=>{
   const doc={...classifyExam('2025/국가직9급/행정법_가.pdf'),id:'d',hash:'one'};
-  const key={...classifyExam('2025/국가직9급/통합 최종 정답.pdf'),id:'key'};
+  const key={...classifyExam('2025/국가직9급/통합 최종 정답_가.pdf'),id:'key'};
   const other={...doc,form:'나',hash:'two',id:'other'};
   assert.equal(possibleDuplicate(other,[doc]).id,'d');
   assert.equal(answerMatch(doc,[doc,key]).answers[0].id,'key');
-  assert.equal(answerMatch(doc,[doc,key,other]).answers.length,0);
+  assert.equal(answerMatch(other,[doc,key,other]).answers.length,0);
+  assert.equal(answerMatch(doc,[doc,{...key,form:''}]).answers.length,0);
   assert.equal(answerMatch(doc,[doc,{...key,grade:'7급'}]).answers.length,0);
   assert.equal(answerMatch(doc,[doc,key,{...key,id:'p',answerEdition:'잠정'}]).answers[0].id,'key');
   assert.equal(answerMatch(doc,[doc,key,{...key,id:'ambiguous'}]).review,true);

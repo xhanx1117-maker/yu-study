@@ -106,12 +106,12 @@ export async function importMenu({refresh,restore,manual},initialFiles){
     const describe=m=>[...m].map(([k,v])=>k+' '+v+'개').join(' · ')||'—';
     const failures=rows.filter(r=>r.error),reviews=rows.filter(r=>r.info?.reviewReasons?.length&&['ready','registered'].includes(r.status)),missing=rows.some(r=>(r.status==='pending'||r.status==='failed')&&!sources.has(r.id));
     const count='발견 '+rows.length+'개 · 신규 '+s.ready+' · 등록 '+s.registered+' · 중복 '+s.duplicate+' · 실패 '+s.failed;
-    show('<p id="bulk-counts">'+count+'</p><p>시험지 '+s.papers+' · 정답지 '+s.keys+' · 분류 검토 '+s.review+' · 예상 신규 원본 '+mb(s.bytes)+'</p>'+
+    show('<p id="bulk-counts">'+count+'</p><p>시험지 '+s.papers+' · 정답지 '+s.keys+' · 해설지 '+s.solutions+' · 분류 검토 '+s.review+' · 예상 신규 원본 '+mb(s.bytes)+'</p>'+
       '<p class="sub">'+esc(describe(s.subjects))+'<br>'+esc(describe(s.years))+'</p>'+
       (reviews.length?'<details class="box"><summary>분류 검토 '+reviews.length+'개</summary><ul>'+reviews.slice(0,50).map(r=>'<li>'+esc(r.path)+' · '+esc(r.info.reviewReasons.join(' · '))+'</li>').join('')+'</ul>'+(reviews.length>50?'처음 50개를 표시합니다. 자료실에서 전체를 검토할 수 있습니다.':'')+'</details>':'')+
       (s.pending?'<p>원본 확인 대기 '+s.pending+'개</p>':'')+
       (missing?'<p>보류된 파일을 처리하려면 같은 원본을 다시 선택하세요.</p>'+buttons():'')+
-      (s.ready||s.pending?'<details class="box"><summary>가져오기 설정</summary>'+checkbox('skip','동일 파일 자동 건너뛰기')+checkbox('classify','과목·연도 자동 분류')+checkbox('link','정답지 자동 연결')+checkbox('analyse','저장 후 문항 영역 분석')+'</details>':'')+
+      (s.ready||s.pending?'<details class="box"><summary>가져오기 설정</summary>'+checkbox('skip','동일 파일 자동 건너뛰기')+checkbox('classify','과목·연도 자동 분류')+checkbox('link','정답지·해설지 자동 연결')+checkbox('analyse','저장 후 문항 영역 분석')+'</details>':'')+
       (!opts.skip&&s.duplicate?'<details class="box" open><summary>동일 원본 '+s.duplicate+'개 · 기존 자료 유지</summary>'+esc(rows.filter(r=>r.status==='duplicate').slice(0,40).map(r=>r.path).join(' · '))+'</details>':'')+
       (failures.length||job.problems.length?'<details class="box"><summary>가져오기 오류</summary><ul>'+[...job.problems,...failures.map(r=>r.path+' · '+r.error)].slice(0,100).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></details>':'')+
       (docs.length?'<p id="scan-counts">문항 분석 완료 '+done+' · 대기 '+scanQueue.length+' · 직접 영역 확인 '+manual+' · 분석 오류 '+scanErrors.length+'</p>':'')+

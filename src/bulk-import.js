@@ -1,4 +1,6 @@
 import {get,state,transaction,entries,putMeta,digestBytes} from './db.js';
+import {materialKind} from './materials.js';
+import {packageManifest,applyEntry} from './package-manifest.js';
 import {initial} from './model.js';
 import {openZip,safePath,ignoredPath} from './archive-zip.js';
 import {classifyExam,possibleDuplicate,identityBucket} from './exam-catalog.js';
@@ -21,12 +23,12 @@ export async function discover(files){
     // File providers can change lastModified when the same archive is picked again.
     // Each ZIP member also carries its ordinal, CRC and path. Raw PDFs are hashed at preview.
     const key=[source,file.size].join('\n');
-    function add(path,size,read,extra='',error='',digest=''){
+    function add(path,size,read,extra='',error='',digest='',manifest){
       const base=JSON.stringify([key,path,extra]),ordinal=occurrences.get(base)||0;
       occurrences.set(base,ordinal+1);
       // Keep the original id for the first occurrence, including jobs from earlier builds.
       const id=ordinal?base+'/'+ordinal:base;
-      sources.set(id,{id,path,size,read,error,digest});if(!error)total+=size;
+      sources.set(id,{id,path,size,read,error,digest,manifest});if(!error)total+=size;
     }
     if(/\.zip$/i.test(source)){
       try{
@@ -34,7 +36,9 @@ export async function discover(files){
         if(list.some(e=>e.path==='archive.json')&&list.some(e=>e.path==='manifest.json')){
           problems.push(source+' · 전체 앱 백업입니다. ‘전체 백업 복원’에서 선택하세요.');continue;
         }
-        for(const [i,e] of list.entries())if(/\.pdf$/i.test(e.path))add(source.replace(/\.zip$/i,'')+'/'+e.path,e.size,e.blob,i+':'+e.crc,e.error);
+        const manifest=await packageManifest(list);
+        problems.push(...manifest.warnings.map(w=>source+' · '+w));
+        for(const [i,e] of list.entries())if(/\.pdf$/i.test(e.path))add(source.replace(/\.zip$/i,'')+'/'+e.path,e.size,e.blob,i+':'+e.crc,e.error,'',manifest.byPath.get(e.path));
         if(!list.some(e=>/\.pdf$/i.test(e.path)))problems.push(source+' · PDF가 없습니다.');
       }catch(e){problems.push(source+' · '+e.message)}
     }else if(/\.pdf$/i.test(source)||file.type==='application/pdf'){
@@ -91,7 +95,7 @@ export async function preview(job,rows,sources,control,report,failedOnly=false){
           if(row.size>budget)throw new DOMException('예상 저장 공간 부족','QuotaExceededError');
           // Blob construction snapshots provider bytes before PDF.js transfers the buffer to its worker.
           const durable=new Blob([bytes],{type:'application/pdf'}),probe=await probePdf(bytes,worker);
-          const info=classifyExam(row.path,probe,archive.examTypes),near=possibleDuplicate({...info,hash},buckets.get(identityBucket(info)));
+          const info=applyEntry(classifyExam(row.path,probe,archive.examTypes),source.manifest,hash),near=possibleDuplicate({...info,hash},buckets.get(identityBucket(info)));
           if(near)info.reviewReasons.push('중복 후보 · '+near.title);
           Object.assign(row,{info,status:'ready',error:''});await storePreview(job,row,durable);
           known.add(hash);index({...info,hash});budget-=row.size;
@@ -105,10 +109,10 @@ export async function preview(job,rows,sources,control,report,failedOnly=false){
   }finally{worker.destroy()}
 }
 export function summary(rows){
-  const sums={pending:0,ready:0,duplicate:0,failed:0,registered:0,papers:0,keys:0,review:0,bytes:0,subjects:new Map(),years:new Map()};
+  const sums={pending:0,ready:0,duplicate:0,failed:0,registered:0,papers:0,keys:0,solutions:0,review:0,bytes:0,subjects:new Map(),years:new Map()};
   for(const r of rows){sums[r.status]++;if(r.status==='ready')sums.bytes+=r.size;
     const d=r.info;if(!d||!['ready','registered'].includes(r.status))continue;
-    sums[d.type==='정답지'?'keys':'papers']++;if(d.reviewReasons?.length)sums.review++;
+    sums[materialKind(d)==='해설지'?'solutions':d.type==='정답지'?'keys':'papers']++;if(d.reviewReasons?.length)sums.review++;
     for(const [m,k] of [[sums.subjects,d.subject],[sums.years,d.year||'연도 미상']])m.set(k,(m.get(k)||0)+1);
   }return sums;
 }
@@ -129,7 +133,7 @@ export async function register(job,rows,control,report){
           else{
             const id=crypto.randomUUID(),session=crypto.randomUUID(),info={...row.info};
             if(!job.options.classify)Object.assign(info,{subject:'미분류',year:'',exam:'',reviewReasons:['수동 분류']});
-            const analyze=job.options.analyse&&info.type!=='정답지';
+            const analyze=job.options.analyse&&materialKind(info)==='문제지'&&!info.reviewReasons.some(r=>/자료 유형|문제지·정답지|manifest/.test(r));
             s.documents.push({...info,id,session,hash:row.hash,size:row.size,created:date,favorite:false,autoLink:job.options.link,
               analysisState:analyze?'queued':'off',importId:job.id});
             s.sessions.push({id:session,doc:id,date});if(info.exam&&!s.examTypes.includes(info.exam))s.examTypes.push(info.exam);
@@ -148,7 +152,7 @@ export async function register(job,rows,control,report){
 export const mapKey=d=>'auto-regions:'+d.id+':'+d.hash;
 export const automaticMap=d=>d.externalRegions?get('meta',mapKey(d)):undefined;
 export async function analyse(job,control,report,{retry=false}={}){
-  const belongs=d=>!d.deleted&&(!job||d.importId===job.id);
+  const belongs=d=>!d.deleted&&materialKind(d)==='문제지'&&(!job||d.importId===job.id);
   const archive=await state(),queue=archive.documents.filter(d=>belongs(d)&&(d.analysisState==='queued'||retry&&d.analysisState==='error'));
   if(!queue.length)return true;
   const worker=await batchWorker();let batch=[],bytes=0;
@@ -158,7 +162,7 @@ export async function analyse(job,control,report,{retry=false}={}){
       const docs=new Map(s.documents.map(d=>[d.id,d]));
       for(const {doc,map,error} of batch){
         const current=docs.get(doc.id);
-        if(!current||current.deleted||current.hash!==doc.hash||!['queued','error'].includes(current.analysisState))continue;
+        if(!current||current.deleted||materialKind(current)!=='문제지'||current.hash!==doc.hash||!['queued','error'].includes(current.analysisState))continue;
         if(current.scanned){current.analysisState='done';continue}
         if(error){current.analysisState='error';current.analysisError=error;continue}
         const nums=Object.keys(map).map(Number).sort((a,b)=>a-b);
