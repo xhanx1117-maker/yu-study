@@ -55,6 +55,8 @@ try{
   await nav('설정');const download=page.waitForEvent('download');await click('backup');const zipPath=await (await download).path(),bytes=await readFile(zipPath);
   const portable=await Zip.loadAsync(bytes);const meta=JSON.parse(await portable.file('archive.json').async('string'));
   assert.equal(meta.documents.find(d=>d.id===law.id).detected[3].regions.length,1);
+  assert.ok(meta.viewer.positions.some(p=>p.id===law.id&&p.hash===law.hash&&p.page===1));
+  assert.ok(meta.viewer.recent.some(r=>r.anchor===law.id));
   assert.equal((await portable.file('files/'+law.hash).async('nodebuffer')).compare(paper),0);
   await modal.waitFor({state:'hidden'});const choice=page.waitForEvent('filechooser');await click('merge-restore');page.once('dialog',d=>d.accept());
   await (await choice).setFiles({name:'backup.zip',mimeType:'application/zip',buffer:bytes});await page.waitForFunction(()=>document.querySelector('#notice').textContent==='복원했습니다.');

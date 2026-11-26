@@ -30,7 +30,10 @@ try{
     const db=await import('/proof-src/db.js');await db.change(()=>s,blobs.map(([hash,bytes])=>[hash,new Blob([new Uint8Array(bytes)],{type:'application/pdf'})]));
   },{s,blobs});
   await page.goto(url);
-  const nav=name=>page.locator('nav').getByRole('button',{name,exact:true}).click();
+  async function nav(name){
+    await page.locator('nav').getByRole('button',{name,exact:true}).click();
+    await page.getByRole('heading',{name:name==='홈'?'학습 서재':name,exact:true}).waitFor();
+  }
   const click=id=>page.locator('#'+id).click(),heading=name=>page.getByRole('heading',{name,exact:true}).waitFor();
   const loaded=()=>page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>350);
   const snapshot=()=>page.evaluate(async()=>(await import('/proof-src/db.js')).state());
