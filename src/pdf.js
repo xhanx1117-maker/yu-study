@@ -10,11 +10,13 @@ export async function batchWorker(){
   const worker=(await pdfEngine()).PDFWorker.create({});
   try{await worker.promise;return worker}catch(error){worker.destroy();throw error}
 }
-export async function openPdf(blob,worker){
+export async function openPdf(blob,worker,signal){
   await pdfEngine();
   const data=blob instanceof Uint8Array?blob:new Uint8Array(await blob.arrayBuffer());
+  signal?.throwIfAborted();
   const task=engine.getDocument({data,worker,cMapUrl:new URL('cmaps/',base).href,cMapPacked:true,standardFontDataUrl:new URL('standard_fonts/',base).href,wasmUrl:new URL('wasm/',base).href,useWorkerFetch:true,isEvalSupported:false});
-  try{return await task.promise}catch(error){await task.destroy().catch(()=>{});throw error}
+  const cancel=()=>task.destroy().catch(()=>{});signal?.addEventListener('abort',cancel,{once:true});
+  try{return await task.promise}catch(error){await task.destroy().catch(()=>{});throw error}finally{signal?.removeEventListener('abort',cancel)}
 }
 export async function probePdf(data,worker){
   const pdf=await openPdf(data,worker);

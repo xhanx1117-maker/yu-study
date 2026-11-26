@@ -14,7 +14,7 @@ import {mountNotebook,resetNotebook,notebookSnapshot,restoreNotebook} from './no
 import {changeDocumentSubject,notebookIndex,groupCounts,totals} from './notebook-model.js';
 import {reader} from './reader.js';
 const menus=['홈','자료실','오답노트','취약 영역','설정'],app=$('#app');
-let section='홈',revision=0,cleanup,readerRoute=null,restoreDetail=null;
+let section='홈',revision=0,cleanup,readerAbort,readerRoute=null,restoreDetail=null;
 const nav=$('nav');nav.innerHTML=menus.map((m,i)=>'<button data-menu="'+i+'">'+m+'</button>').join('');
 const router=navigation(()=>({section,reader:readerRoute&&{...readerRoute},library:librarySnapshot(),notebook:notebookSnapshot(),y:window.scrollY}),async view=>{
   restoreLibrary(view.library);restoreNotebook(view.notebook);restoreDetail=view.overlay?.detail;
@@ -33,10 +33,10 @@ $('#brand-home').onclick=guard(()=>root('홈'));
 const uid=()=>crypto.randomUUID(),allThemes=s=>themes({schemaVersion:1,books:s.books});
 const header=(name,buttons='')=>'<div class="toolbar"><h1>'+name+'</h1><div class="row">'+buttons+'</div></div>';
 function empty(msg){return '<p class="empty">'+msg+'</p>'}
-async function show(name=section,id,number,position={}){section=name;readerRoute=id?{id,number,...position}:null;app.ondrop=app.ondragover=null;const turn=++revision;cleanup?.();cleanup=null;nav.querySelectorAll('button').forEach((b,i)=>{if(menus[i]===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});if(!app.firstChild)app.innerHTML='<p>자료를 불러오는 중…</p>';const s=await state();if(turn!==revision)return;const docs=s.documents.filter(d=>!d.deleted);
+async function show(name=section,id,number,position={}){section=name;readerRoute=id?{id,number,...position}:null;app.ondrop=app.ondragover=null;const turn=++revision;readerAbort?.abort();readerAbort=null;const closing=cleanup?.();cleanup=null;nav.querySelectorAll('button').forEach((b,i)=>{if(menus[i]===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});if(!app.firstChild)app.innerHTML='<p>자료를 불러오는 중…</p>';const [s]=await Promise.all([state(),closing]);if(turn!==revision)return;const docs=s.documents.filter(d=>!d.deleted);
  if(id){
    try{
-     const end=await reader(id,()=>turn===revision,number,s,(next,anchor)=>show('자료실',next,number,{anchor}),{...position,back:()=>router.back()||root('자료실')});
+     readerAbort=new AbortController();const end=await reader(id,()=>turn===revision,number,s,(next,anchor)=>show('자료실',next,number,{anchor,resume:true}),{...position,signal:readerAbort.signal,back:()=>router.back()||root('자료실')});
      if(turn===revision)cleanup=end;else end?.();
    }catch(error){
      if(turn===revision){

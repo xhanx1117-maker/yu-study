@@ -22,11 +22,11 @@ export async function reader(id,alive,questionNumber,s,openDoc,context={}){
  s??=await state();const d=s.documents.find(x=>x.id===id);if(!d||!alive())return;
  const isPaper=materialKind(d)==='문제지',index=materialIndex(s.documents),group=index.groupFor(d.id,context.anchor);
  const [blob,position]=await Promise.all([get('files',d.hash),readPosition(d)]);if(!alive())return;if(!blob)throw Error('이 기기에서 원본 PDF를 찾을 수 없습니다.');
- const pdf=await openPdf(blob);if(!alive()){await pdf.destroy();return}
+ const pdf=await openPdf(blob,undefined,context.signal);if(!alive()){await pdf.destroy();return}
  const automatic=isPaper&&d.externalRegions?await get('meta','auto-regions:'+d.id+':'+d.hash):null;
  if(!alive()){await pdf.destroy();return}
  const baseDoc=x=>automatic?{...x,detected:{...automatic,...x.detected}}:x;
- const focus=isPaper&&(s.questions.find(q=>q.doc===id && q.number===questionNumber&&q.regions.length) || baseDoc(d).detected?.[questionNumber]);
+ const focus=isPaper&&!context.resume&&(s.questions.find(q=>q.doc===id && q.number===questionNumber&&q.regions.length) || baseDoc(d).detected?.[questionNumber]);
  let page=Math.min(context.page||focus?.regions?.[0]?.page||position.page||1,pdf.numPages),zoom=[1,1.5,2].includes(position.zoom)?position.zoom:1,regionN=questionNumber||1,edit=false,busy=false,session=d.session,detected=isPaper?savedRegions(baseDoc(d),s):{},sharedRange=null,selected=new Set(),rev=0;
  const app=$('#app');app.innerHTML='<div class="row">'+action('view-back','‹ 뒤로')+'</div><h1>'+esc(d.title)+'</h1><div class="row workspace-tabs">'+companionButtons(group,id,true)+'</div><div class="workspace"><div><div class="row">'+action('prev','이전')+'<label>페이지 <input id="pg" type="number" min="1" max="'+pdf.numPages+'" value="'+page+'"></label><span>/ '+pdf.numPages+'</span>'+action('next','다음')+action('zoom','확대')+action('original','원본 저장')+'</div><div class="sheet"><div class="paper"><canvas></canvas></div></div></div><div><details class="box" open><summary>오답 등록</summary><label>풀이 회차 <select id="sessions"></select></label>'+action('newSession','새 회차')+'<div class="numbers"></div>'+action('save','선택 저장','primary')+'</details><details class="box"><summary>문항 영역 검수</summary><label>문항 번호 <input id="rn" type="number" min="1" max="'+d.count+'" value="1"></label>'+action('auto','자동 인식')+action('drag','영역 그리기')+'<details class="shared-edit"><summary>공통 지문 지정</summary><label>시작 문항<input id="shared-first" type="number" min="1" max="'+d.count+'" value="'+regionN+'"></label><label>끝 문항<input id="shared-last" type="number" min="1" max="'+d.count+'" value="'+Math.min(d.count,regionN+1)+'"></label>'+action('shared-drag','이 문항들의 공통 지문 그리기')+'</details>'+action('whole','현재 페이지 추가')+action('undoReg','마지막 영역 제거')+action('resetReg','영역 초기화')+'<p class="sub" id="reginfo"></p></details></div></div>';
  const paperStats=isPaper?studyStats(s).get(d.id):null;
@@ -103,7 +103,16 @@ export async function reader(id,alive,questionNumber,s,openDoc,context={}){
    if(alive()){drawing(false);overlay();notice(first+'~'+last+'번에 공통 지문을 연결했습니다.')}
  }
  on('whole',()=>updateRegions(rs=>rs.push({page,x:0,y:0,w:1,h:1})));on('undoReg',()=>updateRegions(rs=>rs.pop()));on('resetReg',()=>updateRegions(rs=>rs.splice(0)));
- const paper=$('.paper');let start;function point(e){const r=paper.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))]}
+ const paper=$('.paper');let destroyed;
+ function teardown(){
+   if(destroyed)return destroyed;
+   if(positionDirty)guard(persist)();clearTimeout(saveTimer);lifetime.abort();rendering?.abort();
+   const canvas=paper.querySelector('canvas');if(canvas)canvas.width=canvas.height=1;
+   context.signal?.removeEventListener('abort',teardown);
+   destroyed=pdf.destroy().catch(()=>{});return destroyed;
+ }
+ context.signal?.addEventListener('abort',teardown,{once:true});
+ let start;function point(e){const r=paper.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))]}
  paper.onpointerdown=e=>{if(edit){paper.setPointerCapture(e.pointerId);start=point(e)}};paper.onpointercancel=()=>start=null;paper.onpointerup=guard(async e=>{if(!start)return;const end=point(e),[a,b]=start;start=null;const [x,y]=end,w=Math.abs(x-a),h=Math.abs(y-b);if(w>.01&&h>.01){
    const area={page,x:Math.min(a,x),y:Math.min(b,y),w,h};
    if(sharedRange)await addPassage(area,sharedRange);else await updateRegions(rs=>rs.push(area));
@@ -122,9 +131,9 @@ export async function reader(id,alive,questionNumber,s,openDoc,context={}){
    }finally{button.disabled=false}
  });
  if(isPaper){$('#rn').value=regionN;await panel(s)}await draw();
- if(!alive()){lifetime.abort();await pdf.destroy();return}
+ if(!alive()){await teardown();return}
  sheet.addEventListener('scroll',moved,{passive:true,signal:lifetime.signal});window.addEventListener('scroll',moved,{passive:true,signal:lifetime.signal});
  window.addEventListener('pagehide',persist,{signal:lifetime.signal});await viewed(d,group?.paper?.id||context.anchor);
  if(isPaper&&!d.scanned&&!d.analysisState&&alive())guard(scan)();
- return ()=>{if(positionDirty)guard(persist)();lifetime.abort();rendering?.abort();const canvas=paper.querySelector('canvas');if(canvas)canvas.width=canvas.height=1;pdf.destroy().catch(()=>{})}
+ return teardown
 }

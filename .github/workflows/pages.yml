@@ -88,9 +88,27 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+  companions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts && npm run build
+      - name: Verify linked PDFs and interrupted trash cleanup in Chromium
+        run: node scripts/companion-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+      - run: npx playwright install --with-deps webkit
+      - name: Verify linked PDFs, offline positions and touch history in WebKit
+        run: node scripts/companion-test.mjs
+        env:
+          YU_TEST_ENGINE: webkit
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: build
+    needs: [build, companions]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
