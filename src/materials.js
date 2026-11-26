@@ -5,7 +5,7 @@ export const mixedType='문제·해설 혼합';
 export const lawFlags=['법령 개정 검토 필요','판례 변경 검토 필요','과거 정답 확인 필요','검토 완료'];
 export const storedType=kind=>kind==='문제지'?'기출문제지':kind;
 export function materialKind(doc){
-  if(!doc.type||['기출문제지','문제지','모의고사'].includes(doc.type))return '문제지';
+  if(!doc.type||['기출문제지','기출문제','시험지','문제지','모의고사'].includes(doc.type))return '문제지';
   if(doc.type==='정답지')return '정답지';
   if(/해설|풀이집/.test(doc.type))return '해설지';
   return '기타 자료';

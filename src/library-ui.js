@@ -110,7 +110,7 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
   }
   const search=bindSearch(at('query'),value=>{f.query=value;draw()});
   for(const [id,key] of [['subject','subject'],['year','year'],['exam','exam'],['study-filter','status'],['lib-extra','extra'],['lib-order','order']])at(id).onchange=e=>{checkpoint();f[key]=e.target.selectedIndex||key==='order'?e.target.value:'';draw()};
-  at('review-filter').onchange=e=>{f.review=e.target.checked;draw()};at('bring').onclick=guard(()=>bring());
+  at('review-filter').onchange=e=>{checkpoint();f.review=e.target.checked;draw()};at('bring').onclick=guard(()=>bring());
   at('inventory').onclick=guard(()=>inventory(f.subject));at('trash').onclick=guard(()=>{if(f.trash&&back)return back();checkpoint();Object.assign(f,defaults,{trash:!f.trash,kind:f.trash?'문제지':'전체 자료'});return refresh()});if(at('trash-back'))at('trash-back').onclick=back;
   at('library-edit').onclick=()=>{editing=!editing;at('library-edit').textContent=editing?'편집 마침':'편집';selected.clear();paint()};
   pages.onclick=e=>{const b=e.target.closest('button');if(!b)return;page+=b.id==='list-next'?1:-1;paint();results.scrollIntoView({block:'start'})};
