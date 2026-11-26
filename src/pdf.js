@@ -1,3 +1,4 @@
+import {explanationMarkers} from './exam-catalog.js';
 import {examPixels,pageFrame,beforeLine,tightBand,regionVersion,repeatedPageEdges} from './exam-regions.js';
 const base=new URL('vendor/',document.baseURI);
 let engine;
@@ -18,15 +19,25 @@ export async function openPdf(blob,worker,signal){
   const cancel=()=>task.destroy().catch(()=>{});signal?.addEventListener('abort',cancel,{once:true});
   try{return await task.promise}catch(error){await task.destroy().catch(()=>{});throw error}finally{signal?.removeEventListener('abort',cancel)}
 }
-export async function probePdf(data,worker){
+export async function probePdf(data,worker,path=''){
   const pdf=await openPdf(data,worker);
   try{
     const page=await pdf.getPage(1),lines=pageText(page.getViewport({scale:1}),await textContent(page));
     const first=Math.min(.21,...markerLines(lines,300).filter(l=>l.x<.35).map(l=>l.y));
     const heading=lines.filter(l=>l.y<first-.001).sort((a,b)=>a.y-b.y||a.x-b.x).slice(0,40).map(l=>l.str).join(' ');
     const sample=lines.slice(0,320).map(l=>l.str).join(' ');
+    page.cleanup();
+    let tailSample='';
+    // A question paper may append explanations after the last question. Inspect
+    // one additional text page without rendering or scanning the whole file.
+    const namedCompanion=/정답지|정답표|해설지|해설집|answer[\s_-]*key|solutions?/i.test(path.split('/').at(-1)+' '+heading);
+    if(pdf.numPages>1&&!namedCompanion&&!explanationMarkers(sample)){
+      const last=await pdf.getPage(pdf.numPages);
+      try{tailSample=(await textContent(last)).items.slice(0,240).map(item=>item.str||'').join(' ').slice(0,6500)}
+      finally{last.cleanup()}
+    }
     const explicitCount=heading.match(/(?:총|전체)\s*(\d{1,3})\s*문항/);
-    return {heading,sample,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};
+    return {heading,sample,tailSample,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};
   }finally{await pdf.destroy()}
 }
 export async function paint(pdf,page,canvas,width=1100,region=null,signal){

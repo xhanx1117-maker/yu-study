@@ -26,6 +26,7 @@ test('filename, folder and bounded body keep mixed papers out of the exam queue'
   assert.equal(materialKind(classifyExam('2026/행정학 문제 및 해설.pdf')),'해설지');
   assert.equal(materialKind(classifyExam('자료/해설지/기출.pdf')),'해설지');
   assert.equal(materialKind(classifyExam('자료/시험지.pdf',{sample:'1. 질문 [해설] 합성 예시'})),'해설지');
+  assert.equal(classifyExam('시험지.pdf',{sample:'1. 질문',tailSample:'Answer: B. Explanation: example'}).type,'문제·해설 혼합');
   assert.equal(materialKind({type:'시험지'}),'문제지');
   assert.equal(materialKind(classifyExam('법.pdf',{sample:'1. 다음 중 정답을 고르시오.'})),'문제지');
 });

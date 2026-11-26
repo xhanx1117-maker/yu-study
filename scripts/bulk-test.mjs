@@ -14,7 +14,7 @@ const ctx=await (tablet?webkit:chromium).launchPersistentContext('',{headless:tr
   ...(!tablet&&process.env.YU_BROWSER?{executablePath:process.env.YU_BROWSER}:{})});
 const stop=setTimeout(()=>{console.error('Collection integration test timed out');process.exit(1)},210000);stop.unref();
 try{
-  const page=await ctx.newPage(),errors=[];page.setDefaultTimeout(18000);page.on('pageerror',e=>errors.push(e.message));
+  let page=await ctx.newPage();const errors=[];page.setDefaultTimeout(18000);page.on('pageerror',e=>errors.push(e.message));
   const paper=await fixturePaper(),long=await fixturePaper(25),key=Buffer.concat([paper,Buffer.from('\n% answer key')]);
   const zip=new Zip();zip.file('2025/국가직9급/행정법_가.pdf'.normalize('NFD'),paper);
   zip.file('2025/국가직9급/행정법_가_복사.pdf',paper);zip.file('__MACOSX/._행정학.pdf',paper);
@@ -126,7 +126,10 @@ try{
   await page.waitForFunction(()=>navigator.serviceWorker.controller?.state==='activated');
   if(!tablet)await ctx.setOffline(true);
   const closed=new Promise(resolve=>server.close(resolve));server.closeAllConnections();await closed;
-  const offline=await page.reload();assert.equal(offline.fromServiceWorker(),true);
+  // Reopen the installed app from its URL after shutdown. The old document may
+  // still have a same-address history traversal queued by its last dialog.
+  await page.close();page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));
+  const offline=await page.goto(url);assert.equal(offline.fromServiceWorker(),true);
   await nav('자료실');await page.locator('[data-doc="'+law.id+'"]').click();
   await page.locator('.numbers [data-n="3"][aria-pressed=true]').waitFor();assert.deepEqual(errors,[]);
   console.log('PASS '+(tablet?'WebKit':'Chromium')+' ZIP, nested NFC/NFD, DEFLATE/STORE, corrupt/encrypted file isolation, exact duplicates, grade/form, shared final key, 20/25 crops, reload/resume, batch pause, quota retry, interrupted preview/reselection, nested directory where supported, intact originals, trash/restore, inventory, ZIP backup/merge and offline study.');

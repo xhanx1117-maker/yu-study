@@ -90,8 +90,12 @@ try{
   await page.waitForFunction(()=>document.querySelector('#scan-counts')?.textContent.includes('분석 완료 1'));
   await page.locator('#bulk-library').click();
   await page.waitForFunction(()=>document.querySelectorAll('[data-doc]').length===2);
+  await page.locator('[data-kind="해설지"]').click();await page.getByText('표시할 자료가 없습니다.').waitFor();
+  await page.locator('[data-kind="문제지"]').click();await page.waitForFunction(()=>document.querySelectorAll('[data-doc]').length===2);
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  assert.equal(await page.locator('main > footer').textContent(),'Made by Yuchan.');
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({version,url,status:response.status(),registration,manifest,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline native Korean composition and committed search','offline detail backdrop tap','offline workbook preview','offline nested ZIP import, deduplication and question analysis']}));
+  console.log(JSON.stringify({version,url,status:response.status(),registration,manifest,verified:['native PDF picker','local PDF storage','question extraction','wrong-answer record','offline reload','offline notebook rendering','subject tab','offline native Korean composition and committed search','offline detail backdrop tap','offline workbook preview','offline nested ZIP import, deduplication and question analysis','offline material role tabs and settings footer']}));
 }finally{
   await browser?.close();
   clearTimeout(deadline);

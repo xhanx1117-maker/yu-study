@@ -106,6 +106,20 @@ jobs:
         run: node scripts/companion-test.mjs
         env:
           YU_TEST_ENGINE: webkit
+      - uses: actions/checkout@v4
+        with:
+          ref: b92366a1bffa94b6ea8c1784fb97dbcfeee0f255
+          path: deployed-v051
+      - name: Upgrade an installed v0.5.1 app with existing files, study and trash history
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" deployed-v051/node_modules
+          npm --prefix deployed-v051 run build
+          node scripts/browser-test.mjs
+          YU_TEST_ENGINE=webkit node scripts/browser-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+          YU_PREVIOUS_VERSION: 0.5.1
+          YU_PREVIOUS_DIST: deployed-v051/dist
   performance:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

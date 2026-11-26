@@ -94,7 +94,7 @@ export async function preview(job,rows,sources,control,report,failedOnly=false){
           if(processed++%24===0){const estimate=await navigator.storage?.estimate?.().catch(()=>null);budget=estimate?.quota?estimate.quota-estimate.usage:Infinity}
           if(row.size>budget)throw new DOMException('예상 저장 공간 부족','QuotaExceededError');
           // Blob construction snapshots provider bytes before PDF.js transfers the buffer to its worker.
-          const durable=new Blob([bytes],{type:'application/pdf'}),probe=await probePdf(bytes,worker);
+          const durable=new Blob([bytes],{type:'application/pdf'}),probe=await probePdf(bytes,worker,row.path);
           const info=applyEntry(classifyExam(row.path,probe,archive.examTypes),source.manifest,hash),near=possibleDuplicate({...info,hash},buckets.get(identityBucket(info)));
           if(near)info.reviewReasons.push('중복 후보 · '+near.title);
           Object.assign(row,{info,status:'ready',error:''});await storePreview(job,row,durable);

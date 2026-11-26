@@ -86,10 +86,15 @@ try{
   await click('brand-home');await heading('학습 서재');await nav('설정');await page.locator('main > footer.settings-credit').waitFor();assert.equal(await page.locator('main > :last-child').textContent(),'Made by Yuchan.');
   await nav('자료실');await click('bring');
   const zip=new Zip(),path='2026/국가직9급/제1회/행정법_가_추가.pdf',bytes=Buffer.concat([pdf,Buffer.from('\n%manifest-study')]);
+  const {PDFDocument}=require('pdf-lib'),appended=await PDFDocument.create();
+  appended.addPage().drawText('1. Fictional question only');
+  appended.addPage().drawText('Answer: B. Explanation: a fictional worked example');
+  zip.file('2025/지방직9급/행정학_시험지.pdf',await appended.save());
   zip.file(path,bytes);zip.file('manifest.json',JSON.stringify({files:[{path,type:'mixed',sha256:createHash('sha256').update(bytes).digest('hex')}]}));
   await page.locator('#bulk-files').setInputFiles({name:'연습.zip',mimeType:'application/zip',buffer:await zip.generateAsync({type:'nodebuffer'})});
-  await page.locator('#bulk-register').waitFor();assert.match(await page.locator('#modal').innerText(),/해설지 1/);await click('bulk-register');await click('bulk-library');
+  await page.locator('#bulk-register').waitFor();assert.match(await page.locator('#modal').innerText(),/해설지 2/);await click('bulk-register');await click('bulk-library');
   const imported=(await snapshot()).documents.find(d=>d.title.includes('추가'));assert.equal(imported.type,'문제·해설 혼합');assert.equal(imported.analysisState,'off');
+  const mixed=(await snapshot()).documents.find(d=>d.title==='행정학_시험지');assert.equal(mixed.type,'문제·해설 혼합');assert.equal(mixed.analysisState,'off');
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);await ctx.setOffline(true);await page.reload();
   await nav('자료실');await page.locator('[data-card="paper"] [data-open-material="key"]').click();await heading(key.title);await loaded();
   await switchDoc('paper',paper.title);assert.equal(await page.locator('#pg').inputValue(),'2');assert.equal(await page.locator('.paper').evaluate(el=>el.style.width),'150%');

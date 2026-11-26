@@ -33,7 +33,11 @@ export function fingerprint(text){
   if(words.length<10)return [];
   return unique(words.map(word=>{let h=2166136261;for(let i=0;i<word.length;i++)h=Math.imul(h^word.charCodeAt(i),16777619);return h>>>0})).sort((a,b)=>a-b).slice(0,32);
 }
-export function classifyExam(path,{heading='',sample='',pages=0,scanned=false,explicitCount=0}={},examTypes=[]){
+export function explanationMarkers(text){
+  return /【\s*해설\s*】|\[\s*해설\s*\]|정답\s*[:：]\s*[①-⑤1-5]\s*(?:해설|풀이)|\bAnswer\s*:\s*[A-E1-5][.)\s]+Explanation\s*:/i.test(text)||
+    (text.match(/(?:해설|Explanation)\s*[:：】\]]/gi)||[]).length>=2;
+}
+export function classifyExam(path,{heading='',sample='',tailSample='',pages=0,scanned=false,explicitCount=0}={},examTypes=[]){
   const normalized=path.normalize('NFC'),filename=normalized.split('/').at(-1),title=filename.replace(/\.pdf$/i,'');
   const custom=examTypes.filter(name=>name&&name!=='기타'&&!commonExams.includes(name)&&!exams.some(([base])=>base===name));
   const parts=[title,heading,normalized.split('/').slice(0,-1).join(' / ')].map(text=>extract(text,custom)),reasons=[];
@@ -53,13 +57,13 @@ export function classifyExam(path,{heading='',sample='',pages=0,scanned=false,ex
     return '';
   };
   const body=sample.slice(0,6500);
-  const bodyExplanation=(body.match(/(?:해설|정답\s*및\s*해설)\s*[:：】\]]/g)||[]).length>=2||
-    /(?:【해설】|\[해설\]|정답\s*[:：]\s*[①-⑤1-5]\s*(?:해설|풀이))/.test(body);
+  const bodyExplanation=explanationMarkers(body)||explanationMarkers(tailSample);
   const evidence=[typeOf(title),typeOf(heading.split(/\b1[.)]/)[0].slice(0,240))].filter(Boolean);
   const folder=names.slice(2).reverse().filter(x=>!(/문제/.test(x)&&/정답/.test(x))&&!(/정답/.test(x)&&/해설/.test(x))).map(typeOf).find(Boolean);
   const hasNotes=bodyExplanation||evidence.some(v=>v==='해설지'||v===mixedType);
-  const type=hasNotes?(bodyExplanation||evidence.includes(mixedType)?mixedType:'해설지'):evidence[0]||folder||'기출문제지';
-  if(new Set(evidence).size>1&&!hasNotes)reasons.push('자료 유형 불일치');
+  const mixed=evidence.includes(mixedType)||bodyExplanation&&!evidence.includes('해설지')&&folder!=='해설지';
+  const type=hasNotes?(mixed?mixedType:'해설지'):evidence[0]||folder||'기출문제지';
+  if(new Set(evidence).size>1&&!(type===mixedType&&evidence.every(v=>v==='기출문제지'||v===mixedType)))reasons.push('자료 유형 불일치');
   const isAnswer=type==='정답지',possible=unique(parts.flatMap(p=>p.subjects));
   const combined=isAnswer&&parts.some(p=>p.combined||p.subjects.length>1);
   const subject=combined?'통합':resolve('subjects','과목')||'미분류';

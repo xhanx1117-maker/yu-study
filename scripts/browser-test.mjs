@@ -48,7 +48,7 @@ const before=await storedArchive(p,Boolean(previous));
 assert.equal(before.original,before.archive.documents[0].hash);
 await p.evaluate(()=>navigator.serviceWorker.ready);await p.waitForFunction(()=>!!navigator.serviceWorker.controller);
 const oldCaches=await p.evaluate(async()=>(await caches.keys()).filter(k=>k.startsWith('yu-study-shell-')));assert.ok(oldCaches.length);
-if(previous)await p.getByText('기기 저장 · v0.4.1',{exact:true}).waitFor();
+if(previous)await p.getByText('기기 저장 · v'+(process.env.YU_PREVIOUS_VERSION||'0.4.1'),{exact:true}).waitFor();
 upgrade=true;
 await p.evaluate(async()=>{const reg=await navigator.serviceWorker.ready;await reg.update()});
 await waitForStorage(p,async()=>(await navigator.serviceWorker.getRegistration())?.waiting?.state==='installed');
