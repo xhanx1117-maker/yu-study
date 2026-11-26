@@ -46,7 +46,9 @@ function mergeRecords(existing,incoming){
   const priorActive=new Set(existing.events.map(attemptKey));
   function add(target,values){const ids=new Set(target.map(a=>a.id));for(const item of values)if(!ids.has(item.id)){ids.add(item.id);target.push(item)}}
   function mapEvent(e){return {...e,q:qmap.get(e.q)||e.q}}
-  add(existing.documents,incoming.documents.filter(d=>!byHash.has(d.hash)).map(d=>({...d,answerId:map.get(d.answerId)||d.answerId})));
+  add(existing.documents,incoming.documents.filter(d=>!byHash.has(d.hash)).map(d=>({...d,answerId:map.get(d.answerId)||d.answerId,
+    ...(Array.isArray(d.answerIds)?{answerIds:d.answerIds.map(id=>map.get(id)||id)}:{}),
+    ...(Array.isArray(d.solutionIds)?{solutionIds:d.solutionIds.map(id=>map.get(id)||id)}:{})})));
   const sessions=new Map(existing.sessions.map(a=>[a.id,a.doc]));
   for(const a of incoming.sessions)if(sessions.has(a.id)&&sessions.get(a.id)!==map.get(a.doc))throw Error('풀이 회차 ID가 충돌해 병합을 중단했습니다.');
   add(existing.sessions,incoming.sessions.map(a=>({...a,doc:map.get(a.doc)})));

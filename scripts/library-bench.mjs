@@ -42,12 +42,13 @@ try{
     const scroll=await page.evaluate(async()=>{const intervals=[],start=performance.now();let last=start;for(let i=0;i<12;i++){
       window.scrollBy(0,i<6?160:-160);await new Promise(requestAnimationFrame);let now=performance.now();intervals.push(now-last);last=now}
       return Math.round(Math.max(...intervals))});
+    await page.locator('.library-filters > summary').click();
     const filter=await measure(async()=>{await page.locator('#subject').selectOption('행정학');await page.waitForFunction(()=>!document.querySelector('[data-doc="doc0"]'))});
     const search=await measure(async()=>{await page.locator('#query').fill('연습 '+(n-1));await page.waitForFunction(()=>document.querySelectorAll('[data-doc]').length===1)});
     const open=await measure(async()=>{await page.locator('[data-doc]').first().click();await page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>300)});
     const heaps=[];
     for(let i=0;i<4;i++){
-      await page.getByRole('button',{name:'자료실',exact:true}).click();await single('[data-doc]');
+      await page.locator('#view-back').click();await single('[data-doc]');
       await cd.send('HeapProfiler.collectGarbage');heaps.push(Math.round((await cd.send('Runtime.getHeapUsage')).usedSize/1048576));
       if(i<3){await page.locator('[data-doc]').first().click();await page.waitForFunction(()=>document.querySelector('.paper canvas')?.width>300)}
     }

@@ -1,3 +1,4 @@
+import {materialKind} from './materials.js';
 import {state,change} from './db.js';
 import {subjects} from './model.js';
 import {commonExams,studyState,studyStats} from './exam-catalog.js';
@@ -9,7 +10,7 @@ const cellKey=(subject,year,exam)=>JSON.stringify([subject,String(year),exam]);
 const csvCell=value=>'"'+String(value).replace(/^[=+@\-\t\r]/,"'$&").replace(/"/g,'""')+'"';
 export function holdings(s,scope){
   const docs=new Map(),stats=studyStats(s),cells=[];
-  for(const d of s.documents)if(!d.deleted&&d.type!=='정답지'&&d.subject===scope.subject){
+  for(const d of s.documents)if(!d.deleted&&materialKind(d)==='문제지'&&d.subject===scope.subject){
     const key=cellKey(d.subject,d.year,d.exam);if(!docs.has(key))docs.set(key,[]);docs.get(key).push(d);
   }
   for(let y=scope.to;y>=scope.from;y--)for(const exam of scope.exams){

@@ -1,3 +1,4 @@
+import {materialKind} from './materials.js';
 import {get} from './db.js';
 import {openPdf,detect} from './pdf.js';
 import {needsRepair,regionRecord} from './region-records.js';
@@ -102,7 +103,7 @@ function withoutPassages(region,passages){
 export async function prepareWorkbook(archive,rows,filters,input,signal,progress,readFile=key=>get('files',key)){
   const options=printSettings(input),seen=new Set(),originalPages=new Map(),partsByDoc=new Map();
   const docs=new Map(archive.documents.map(d=>[d.id,d]));
-  let unique=rows.filter(row=>!seen.has(row.id)&&seen.add(row.id));
+  let unique=rows.filter(row=>materialKind(row.doc)==='문제지'&&!seen.has(row.id)&&seen.add(row.id));
   const repaired=new Map();
   if(options.mode!=='original'){
     const groups=new Map();

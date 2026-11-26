@@ -110,6 +110,7 @@ try{
 
   assert.deepEqual((await saved()).events,archive.events);
   await page.getByRole('button',{name:'국어 자료 1 · 오답 1'}).click();
+  await page.locator('.library-filters > summary').click();
   await page.locator('#year').selectOption('2023');
   const english=await pdfFile('2026 영어.pdf','1. New question','');
   await choose(english);

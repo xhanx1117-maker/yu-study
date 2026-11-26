@@ -1,3 +1,4 @@
+import {materialKind} from './materials.js';
 import {change} from './db.js';
 import {download} from './backup.js';
 import {$,esc,on,modal,notice,markModalSaved} from './ui.js';
@@ -15,7 +16,9 @@ function select(id,values,current){
 }
 
 export function openPrint(archive,rows,filters,{readFile,saveSettings=true}={}){
-  if(!rows.length)return notice('출력할 문항이 없습니다.');
+  const excluded=rows.filter(row=>materialKind(row.doc)!=='문제지').length;
+  rows=rows.filter(row=>materialKind(row.doc)==='문제지');
+  if(!rows.length)return notice(excluded?'현재 선택에는 순수 문제지 문항이 없습니다.':'출력할 문항이 없습니다.');
   const opts=printSettings(archive.printSettings),targets=[],missing=[];
   for(const row of rows){
     const regions=regionRecord(row.doc,row.question).regions;
@@ -28,6 +31,7 @@ export function openPrint(archive,rows,filters,{readFile,saveSettings=true}={}){
     filters.part?themes.find(t=>t.partId===filters.part)?.partTitle:'';
   const title=[filters.subject||subjects.join('·'),group,'오답 문제집'].filter(Boolean).join(' · ');
   const section=modal('<h2>시험지형 PDF 출력</h2><p><strong>'+esc(title)+'</strong> · '+rows.length+'문항 · A4 세로</p>'+
+    (excluded?'<small>정답·해설 등 다른 자료의 기존 오답 '+excluded+'문항은 본문에서 제외했습니다.</small>':'')+
     '<div class="print-grid"><label>레이아웃'+select('print-mode',layouts,opts.mode)+'</label><label>용지 맞춤 기준 배율 (%)<input id="print-scale" type="number" min="50" max="150" value="'+opts.scale+'"></label></div>'+
     '<details class="print-more"><summary>출력 세부 설정</summary><div class="print-grid"><label>페이지 여백 (mm)<input id="print-margin" type="number" min="5" max="24" value="'+opts.margin+'"></label>'+
     '<label>문항 간격'+select('print-gap',Object.fromEntries([...new Set([2,3,6,opts.gap])].sort((a,b)=>a-b).map(n=>[n,({2:'좁게',3:'기본',6:'넓게'}[n]||'사용자 지정')+' · '+n+' mm'])),String(opts.gap))+'</label><label>정렬'+select('print-order',{current:'현재 목록 순서',...orders},opts.order)+'</label></div>'+
