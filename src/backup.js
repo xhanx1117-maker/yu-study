@@ -8,17 +8,15 @@ const externalKey=d=>'auto-regions:'+d.id+':'+d.hash;
 async function portableMeta(s){
   // Serialize one paper at a time. Old clients can open this version-1 backup:
   // generated regions are folded into their original detected field on export.
-  const {documents,...rest}=s,parts=[JSON.stringify(rest).slice(0,-1),',"documents":['];
-  const positions=new Map((await entries('reader:')).map(p=>[p.id,p])),recent=await get('meta','library:recent')||[];
-  const dates=new Map(recent.map(r=>[r.id,r.time]));
+  const {documents,...rest}=s;
+  const viewer={positions:await entries('reader:'),recent:await get('meta','library:recent')||[]};
+  const parts=[JSON.stringify({...rest,viewer}).slice(0,-1),',"documents":['];
   for(const [index,d] of documents.entries()){
     let doc=d;
     if(d.externalRegions){
       const map=await get('meta',externalKey(d));if(!map)throw Error('문항 분석 자료가 누락되었습니다.');
       doc={...d,detected:{...map,...d.detected}};delete doc.externalRegions;
     }
-    if(positions.get(d.id)?.hash===d.hash)doc={...doc,readerPosition:positions.get(d.id),page:positions.get(d.id).page};
-    if(dates.has(d.id))doc={...doc,opened:dates.get(d.id)};
     parts.push(index?',':'',JSON.stringify(doc));
   }
   parts.push(']}');return new Blob(parts,{type:'application/json'});
@@ -92,6 +90,7 @@ export async function restore(file,{merge=false}={}){
     const manifest=JSON.parse(await (await read('manifest.json')).text()),meta=await read('archive.json');
     if(manifest.format!=='yu-study'||manifest.version!==1||await hash(meta)!==manifest.metadataHash)throw Error('백업 형식 또는 체크섬 오류');
     const incoming=validate(JSON.parse(await meta.text())),keys=[...new Set(incoming.documents.map(d=>d.hash))],expected=new Set(manifest.files);
+    const viewer=incoming.viewer;delete incoming.viewer;
     if(!Array.isArray(manifest.files)||expected.size!==keys.length||manifest.files.length!==keys.length||keys.some(k=>!expected.has(k)))throw Error('파일 목록 불일치');
     if(!confirm('PDF '+incoming.documents.length+'건과 오답 이력 '+incoming.events.length+'건을 '+(merge?'기존 자료에 병합할까요? 같은 문항의 기존 메모와 테마를 유지합니다.':'복원하여 현재 자료를 교체할까요? 현재 자료를 유지하려면 취소하고 ‘백업 병합’을 선택하세요.')))return false;
     const before=JSON.stringify(await state());
@@ -110,6 +109,18 @@ export async function restore(file,{merge=false}={}){
         if(!merge){
           const keep=new Set(keys);meta.delete('library:recent');for(const d of current.documents)meta.delete('reader:'+d.id);
           for(const d of current.documents){if(!keep.has(d.hash))files.delete(d.hash);if(d.externalRegions)meta.delete(externalKey(d))}
+        }
+        if(viewer){
+          const byHash=new Map(next.documents.map(d=>[d.hash,d.id])),remap=new Map(incoming.documents.map(d=>[d.id,byHash.get(d.hash)]));
+          for(const p of Array.isArray(viewer.positions)?viewer.positions:[]){
+            const id=remap.get(p?.id);if(!id||byHash.get(p.hash)!==id||!Number.isInteger(p.page)||p.page<1||![1,1.5,2].includes(p.zoom))continue;
+            const value={id,hash:p.hash,page:p.page,zoom:p.zoom,x:Math.max(0,+p.x||0),y:Math.max(0,+p.y||0),windowY:Math.max(0,+p.windowY||0)};
+            if(merge)read(meta.getKey('reader:'+id),key=>{if(!key)meta.put(value,'reader:'+id)});else meta.put(value,'reader:'+id);
+          }
+          if(Array.isArray(viewer.recent))read(meta.get('library:recent'),previous=>{
+            const rows=viewer.recent.filter(r=>remap.get(r?.id)&&typeof r.time==='string').map(r=>({id:remap.get(r.id),anchor:remap.get(r.anchor)||remap.get(r.id),time:r.time}));
+            const unique=new Set();meta.put([...(merge?previous||[]:[]),...rows].sort((a,b)=>b.time.localeCompare(a.time)).filter(r=>!unique.has(r.anchor)&&unique.add(r.anchor)).slice(0,60),'library:recent');
+          });
         }
         for(const k of keys)meta.delete(stage+k);
         meta.put(next,'archive');

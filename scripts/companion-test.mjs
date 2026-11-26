@@ -84,7 +84,7 @@ try{
   await page.waitForFunction(()=>!document.querySelector('#modal').open);
   a=await snapshot();assert.equal(a.documents.filter(d=>d.deleted).length,1);assert.ok(a.documents.find(d=>d.id==='shared'));
   assert.equal(a.events.length,2);assert.deepEqual(a.questions.find(q=>q.id==='paper#2').regions,s.questions[0].regions);
-  await click('brand-home');await heading('학습 서재');await nav('설정');assert.equal(await page.locator('main > :last-child').textContent(),'Made by Yuchan.');
+  await click('brand-home');await heading('학습 서재');await nav('설정');await page.locator('main > footer.settings-credit').waitFor();assert.equal(await page.locator('main > :last-child').textContent(),'Made by Yuchan.');
   await nav('자료실');await click('bring');
   const zip=new Zip(),path='2026/국가직9급/제1회/행정법_가_추가.pdf',bytes=Buffer.concat([pdf,Buffer.from('\n%manifest-study')]);
   zip.file(path,bytes);zip.file('manifest.json',JSON.stringify({files:[{path,type:'mixed',sha256:createHash('sha256').update(bytes).digest('hex')}]}));

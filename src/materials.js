@@ -36,6 +36,13 @@ function comparable(p,c){
   return grade(p)===grade(c)&&dimensions.every(k=>norm(p[k])===norm(c[k]))&&
     (!count(p)||!count(c)||count(p)===count(c));
 }
+function possibleCompanion(p,c){
+  if(grade(p)&&grade(c)&&grade(p)!==grade(c))return false;
+  if(count(p)&&count(c)&&count(p)!==count(c))return false;
+  if(dimensions.some(k=>p[k]&&c[k]&&norm(p[k])!==norm(c[k])))return false;
+  const forms=[c.form,...(Array.isArray(c.forms)?c.forms:[])].filter(Boolean).map(norm);
+  return !p.form||!forms.length||forms.includes(norm(p.form));
+}
 function acceptsForm(p,c,kind){
   const forms=[c.form,...(Array.isArray(c.forms)?c.forms:[])].map(norm).filter(Boolean);
   return p.form?forms.includes(norm(p.form)):kind==='해설지'&&!forms.length;
@@ -61,7 +68,7 @@ export function materialIndex(documents){
         group[field]=[...new Set(manual)].map(id=>byId.get(id)).filter(d=>d&&materialKind(d)===kind);
         if(group[field].length!==manual.length)group.review=true;
       }else if(p.autoLink!==false&&p.year&&p.exam&&subjects.includes(p.subject)){
-        const similar=pool.filter(d=>materialKind(d)===kind&&d.autoLink!==false&&coversSubject(d,p.subject));
+        const similar=pool.filter(d=>materialKind(d)===kind&&d.autoLink!==false&&coversSubject(d,p.subject)&&possibleCompanion(p,d));
         const exact=similar.filter(d=>!p.reviewReasons?.length&&!d.reviewReasons?.length&&comparable(p,d)&&acceptsForm(p,d,kind)&&
           !peerPapers.some(peer=>peer.id!==p.id&&(!count(peer)||!count(d)||count(peer)===count(d))));
         exact.sort(displayOrder);

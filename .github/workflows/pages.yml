@@ -106,9 +106,36 @@ jobs:
         run: node scripts/companion-test.mjs
         env:
           YU_TEST_ENGINE: webkit
+  performance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts && npm run build
+      - name: Measure metadata and mixed PDF collections up to 3000 originals
+        run: node scripts/companion-bench.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
+      - uses: actions/checkout@v4
+        with:
+          ref: b92366a1bffa94b6ea8c1784fb97dbcfeee0f255
+          path: baseline-v051
+      - name: Compare the same illustrated library before and after the update
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" baseline-v051/node_modules
+          npm --prefix baseline-v051 run build
+          cd baseline-v051
+          node scripts/library-bench.mjs
+          cd ..
+          node scripts/library-bench.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: [build, companions]
+    needs: [build, companions, performance]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

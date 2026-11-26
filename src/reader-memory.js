@@ -9,7 +9,7 @@ export async function readPosition(d){
 }
 export function writePosition(d,value){
   const p={...value,id:d.id,hash:d.hash};retain(positions,d.id,p);
-  return putMeta('reader:'+d.id,p);
+  return putMeta('reader:'+d.id,p).finally(()=>{if(positions.get(d.id)===p)positions.delete(d.id)});
 }
 export const readDraft=(id,session)=>drafts.get(JSON.stringify([id,session]));
 export function rememberDraft(id,session,selected,baseline){
