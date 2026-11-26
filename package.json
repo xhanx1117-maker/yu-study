@@ -2,7 +2,7 @@
   "name": "yu-study",
   "private": true,
   "type": "module",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "scripts": {
     "build": "vite build",
     "test": "node --test tests/*.mjs",

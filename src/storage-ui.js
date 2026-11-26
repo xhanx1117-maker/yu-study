@@ -38,6 +38,7 @@ export function storageTools(app,s){
     const reg=await navigator.serviceWorker.getRegistration();if(!reg)throw Error('오프라인 앱을 준비 중입니다.');
     await reg.update();const installing=reg.installing;
     if(installing)await new Promise(resolve=>{function onState(){if(['installed','activated','redundant'].includes(installing.state)){installing.removeEventListener('statechange',onState);resolve()}}installing.addEventListener('statechange',onState);onState()});
+    if(installing?.state==='redundant'&&!reg.waiting)throw Error('새 오프라인 파일을 준비하지 못했습니다. 온라인에서 다시 확인하세요.');
     result.textContent=reg.waiting?'업데이트가 준비되었습니다.':'현재 배포 버전을 사용 중입니다.';return reg;
   }
   area.querySelector('#check-update').onclick=guard(check);
