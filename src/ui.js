@@ -64,6 +64,10 @@ function bindDialog(d){
   d.addEventListener('cancel',e=>{e.preventDefault();dismiss(true)});
   d.querySelector('form').addEventListener('submit',e=>{e.preventDefault();dismiss(false)});
 }
+export function canDismissForBack(){
+  const d=$('#modal');if(!d.open)return true;
+  return !dialogPolicy?.critical&&dialogPolicy?.section.getAttribute('aria-busy')!=='true'&&!d.querySelector('form button').disabled&&mayLeaveModal();
+}
 export function modal(html,policy={}){
   const d=$('#modal');
   if(!d.dataset.bound){d.dataset.bound='true';bindDialog(d)}
@@ -73,7 +77,7 @@ export function modal(html,policy={}){
   if(heading){heading.id||='modal-heading';d.setAttribute('aria-labelledby',heading.id)}
   else d.removeAttribute('aria-labelledby');
   dialogPolicy={...policy,section,initial:values(section)};
-  if(!d.open)d.showModal();
+  if(!d.open){window.dispatchEvent(new CustomEvent('yu-dialog-open',{detail:document.activeElement?.id||''}));d.showModal()}
   return section;
 }
 export function pick(accept,multiple=false){

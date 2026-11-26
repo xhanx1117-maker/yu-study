@@ -11,6 +11,8 @@ import {compareRegions} from './region-ui.js';
 let filters=emptyFilters(), editing=false, page=0;
 let filtersOpen=false, groupOpen=false, groupType='kind';
 const chosen=new Set(), pageSize=28;
+export const notebookSnapshot=()=>({filters:structuredClone(filters),page,filtersOpen,groupOpen,groupType});
+export function restoreNotebook(view){resetNotebook(view.filters);page=view.page;filtersOpen=view.filtersOpen;groupOpen=view.groupOpen;groupType=view.groupType}
 export function resetNotebook(values={}){
   filters={...emptyFilters(),...values};chosen.clear();page=0;editing=false;groupType='kind';
 }
@@ -148,11 +150,11 @@ export function mountNotebook(app,archive,hooks){
     drawFilters();drawGroups();applyFilters();
   }
   function reset(values){
-    resetNotebook(values);search.reset(filters.search);themeSearch.reset();themeQuery='';themesPanel.open=false;drawScope();
+    hooks.checkpoint?.();resetNotebook(values);search.reset(filters.search);themeSearch.reset();themeQuery='';themesPanel.open=false;drawScope();
   }
   $('.subject-tabs').onclick=guard(e=>{const b=e.target.closest('[data-subject]');if(b)reset({subject:b.dataset.subject})});
   grid.onchange=guard(e=>{
-    const key=e.target.id.slice(2);filters[key]=e.target.value;page=0;chosen.clear();
+    hooks.checkpoint?.();const key=e.target.id.slice(2);filters[key]=e.target.value;page=0;chosen.clear();
     if(['book','part','chapter'].includes(key)){
       if(key==='book')filters.part='';
       if(key!=='chapter')filters.chapter='';
@@ -162,14 +164,14 @@ export function mountNotebook(app,archive,hooks){
   });
   $('.check-list',themesPanel).onchange=guard(e=>{
     const input=e.target.closest('[data-ft]');if(!input)return;
-    const ids=new Set(filters.themeIds);if(input.checked)ids.add(input.dataset.ft);else ids.delete(input.dataset.ft);
+    hooks.checkpoint?.();const ids=new Set(filters.themeIds);if(input.checked)ids.add(input.dataset.ft);else ids.delete(input.dataset.ft);
     filters.themeIds=[...ids];themeSummary();page=0;chosen.clear();applyFilters();
   });
   on('f-clear',()=>reset({subject:filters.subject}));
   on('group-type',e=>{groupType=e.target.value;drawGroups()},'change');
   $('.facet-list').onclick=guard(e=>{
     const b=e.target.closest('[data-group]');if(!b)return;
-    filters={...emptyFilters(),subject:filters.subject,...(groupType==='theme'?{themeIds:[b.dataset.group]}:{[groupType]:b.dataset.group})};
+    hooks.checkpoint?.();filters={...emptyFilters(),subject:filters.subject,...(groupType==='theme'?{themeIds:[b.dataset.group]}:{[groupType]:b.dataset.group})};
     page=0;chosen.clear();search.reset();themeSearch.reset();themeQuery='';drawFilters();applyFilters();groupPanel.open=false;
   });
   on('edit-notebook',()=>{editing=!editing;chosen.clear();drawList()});
@@ -189,5 +191,6 @@ export function mountNotebook(app,archive,hooks){
   on('nb-prev',()=>{page--;drawList();app.scrollIntoView()});on('nb-next',()=>{page++;drawList();app.scrollIntoView()});
   bindAnalysis(archive,()=>list,()=>scope.catalog,hooks.refresh);
   drawScope();
+  if(hooks.detail&&index.byId.has(hooks.detail))openDetail(archive,index,index.byId.get(hooks.detail),hooks);
   return ()=>{app.removeEventListener('keydown',dismissFilters);app.removeEventListener('click',dismissFilters);search.dispose();themeSearch.dispose()};
 }

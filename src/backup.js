@@ -1,4 +1,4 @@
-import {state,get,change,hash,digestBytes,transaction,exclusive} from './db.js';
+import {state,get,change,hash,digestBytes,transaction,exclusive,entries} from './db.js';
 import {validate,initial} from './model.js';
 import {attemptKey,reconcilePurged} from './notebook-model.js';
 import {openZip,makeZip} from './archive-zip.js';
@@ -9,12 +9,16 @@ async function portableMeta(s){
   // Serialize one paper at a time. Old clients can open this version-1 backup:
   // generated regions are folded into their original detected field on export.
   const {documents,...rest}=s,parts=[JSON.stringify(rest).slice(0,-1),',"documents":['];
+  const positions=new Map((await entries('reader:')).map(p=>[p.id,p])),recent=await get('meta','library:recent')||[];
+  const dates=new Map(recent.map(r=>[r.id,r.time]));
   for(const [index,d] of documents.entries()){
     let doc=d;
     if(d.externalRegions){
       const map=await get('meta',externalKey(d));if(!map)throw Error('문항 분석 자료가 누락되었습니다.');
       doc={...d,detected:{...map,...d.detected}};delete doc.externalRegions;
     }
+    if(positions.get(d.id)?.hash===d.hash)doc={...doc,readerPosition:positions.get(d.id),page:positions.get(d.id).page};
+    if(dates.has(d.id))doc={...doc,opened:dates.get(d.id)};
     parts.push(index?',':'',JSON.stringify(doc));
   }
   parts.push(']}');return new Blob(parts,{type:'application/json'});
@@ -104,7 +108,7 @@ export async function restore(file,{merge=false}={}){
         if(JSON.stringify(current)!==before)throw Error('복원 중 다른 창에서 자료가 바뀌었습니다. 다시 시도해 주세요.');
         const next=merge?mergeRecords(current,incoming):reconcilePurged(incoming,current.purgedAttempts);
         if(!merge){
-          const keep=new Set(keys);
+          const keep=new Set(keys);meta.delete('library:recent');for(const d of current.documents)meta.delete('reader:'+d.id);
           for(const d of current.documents){if(!keep.has(d.hash))files.delete(d.hash);if(d.externalRegions)meta.delete(externalKey(d))}
         }
         for(const k of keys)meta.delete(stage+k);

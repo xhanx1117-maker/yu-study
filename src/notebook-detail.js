@@ -1,3 +1,4 @@
+import {materialIndex,materialKind,coversSubject,lawFlags} from './materials.js';
 import {change,get} from './db.js';
 import {openPdf,paint} from './pdf.js';
 import {assignTheme,setStatus,statuses,removeEvents,trashEntries,changeTrash} from './notebook-model.js';
@@ -87,12 +88,16 @@ export function openDetail(archive,index,row,{refresh,openOriginal}){
   const themeOpts=catalog.map(t=>[t.id,t.path+' · '+themeName(t)]);
   const sessions=archive.sessions.filter(s=>s.doc===doc.id);
   const attempts=new Map(sessions.map((s,i)=>[s.id,i+1]));
-  const material=archive.documents.filter(d=>!d.deleted&&d.subject===doc.subject&&['정답지','해설지'].includes(d.type));
+  const material=archive.documents.filter(d=>!d.deleted&&coversSubject(d,doc.subject)&&['정답지','해설지'].includes(materialKind(d)));
+  const group=materialIndex(archive.documents).groupFor(doc.id),specific=archive.documents.find(d=>!d.deleted&&d.id===q.solution?.doc);
+  const target=(kind,collection)=>specific&&materialKind(specific)===kind?specific:group?.[collection]?.[0];
+  const answer=target('정답지','answers'),solution=target('해설지','solutions');
   const section=modal('<h2>'+esc(doc.title)+' · '+q.number+'번</h2><div id="detail-crops" class="crops"></div>'+
-    '<div class="row"><button id="goto-original">원본 시험지 열기</button><button id="reanalyze">영역 재분석</button><button id="master">숙지 완료</button></div>'+
+    '<div class="row"><button id="goto-original">원본 시험지 열기</button><button id="goto-answer" '+(answer?'':'disabled')+'>정답 보기</button><button id="goto-solution" '+(solution?'':'disabled')+'>해설 보기</button><button id="reanalyze">영역 재분석</button><button id="master">숙지 완료</button></div>'+
     '<label>주 테마<select id="qt">'+selectOptions(themeOpts,q.theme,'미분류')+'</select></label>'+
     '<details><summary>보조 테마</summary><div class="check-list">'+catalog.map(t=>'<label><input type="checkbox" data-secondary="'+esc(t.id)+'" '+(q.secondary.includes(t.id)?'checked':'')+'> '+esc(themeName(t))+'</label>').join('')+'</div></details>'+
     '<label>숙지 상태<select id="st">'+statuses.map(s=>'<option '+(s===q.status?'selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
+    (doc.subject==='행정법'?'<label>현행법 검토<select id="q-law"><option value="">표시 없음</option>'+lawFlags.map(flag=>'<option '+(q.lawReview===flag?'selected':'')+'>'+flag+'</option>').join('')+'</select></label>':'')+
     '<label>개인 메모<textarea id="memo">'+esc(q.memo)+'</textarea></label>'+
     '<details><summary>정답·해설 연결</summary><label>정답 또는 해설<textarea id="solution-text">'+esc(q.solution?.text)+'</textarea></label>'+
     '<label>연결할 자료<select id="solution-doc">'+selectOptions(material.map(d=>[d.id,d.title]),q.solution?.doc,'연결 없음')+'</select></label>'+
@@ -100,9 +105,11 @@ export function openDetail(archive,index,row,{refresh,openOriginal}){
     '<div class="row"><button id="qsave" class="primary">변경 저장</button><button id="unlink">테마 연결 모두 해제</button></div>'+
     '<details><summary>오답 이력 '+row.count+'회</summary>'+row.events.map(e=>'<p class="toolbar">'+(attempts.get(e.session)||'?')+'회차 · '+esc((e.date||'').slice(0,10))+'<button data-event="'+esc(e.id)+'">이 회차 제거</button></p>').join('')+'</details>'+
     '<button id="remove-all" class="danger">이 문항의 전체 오답 이력 제거</button>',{protectEdits:true});
+  section.dataset.question=q.id;
   const crops=$('#detail-crops');renderRegions(crops,row).catch(error=>{if(crops.isConnected)crops.textContent=error.message});
   on('reanalyze',()=>{if(mayLeaveModal())return compareRegions([row],{refresh,openOriginal})});
-  on('goto-original',()=>{if(!mayLeaveModal())return;close();return openOriginal(doc.id,q.number)});
+  function visit(d,page){if(!d||!mayLeaveModal())return;close();return openOriginal(d.id,q.number,doc.id,page)}
+  on('goto-original',()=>visit(doc));on('goto-answer',()=>visit(answer,answer?.id===specific?.id?q.solution?.page:null));on('goto-solution',()=>visit(solution,solution?.id===specific?.id?q.solution?.page:null));
   async function update(fn){await change(fn);close();await refresh()}
   on('master',()=>update(s=>{setStatus(s,[q.id],'숙지 완료')}));
   on('unlink',()=>update(s=>{assignTheme(s,[q.id],null)}));
@@ -120,7 +127,7 @@ export function openDetail(archive,index,row,{refresh,openOriginal}){
       if(current.subject!==doc.subject)throw Error('원본 과목이 바뀌었습니다. 목록을 다시 여세요.');
       const allowed=new Set(catalog.map(t=>t.id));
       if(secondary.some(id=>!allowed.has(id)))throw Error('보조 테마 과목을 확인하세요.');
-      assignTheme(s,[q.id],theme);target.secondary=secondary;target.memo=memo;
+      assignTheme(s,[q.id],theme);target.secondary=secondary;target.memo=memo;if($('#q-law'))target.lawReview=$('#q-law').value;
       if(text||link)target.solution={text,doc:link||null,page:link?page:null};else delete target.solution;
       setStatus(s,[q.id],status);
     });

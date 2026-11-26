@@ -40,7 +40,7 @@ export async function paint(pdf,page,canvas,width=1100,region=null,signal){
     signal?.addEventListener('abort',abort,{once:true});await task.promise;
   }finally{signal?.removeEventListener('abort',abort);p.cleanup()}
 }
-async function textContent(page){
+export async function textContent(page){
  // Some Safari versions support stream readers but not async stream iteration.
  // PDF.js getTextContent uses for-await even in its legacy build.
  if(typeof ReadableStream.prototype[Symbol.asyncIterator]==='function')return page.getTextContent();
