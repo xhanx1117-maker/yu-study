@@ -37,6 +37,14 @@ export async function purgeDialog(ids,refresh){
               removeSources(s,safe);
               const keep=new Set([...s.documents.map(d=>d.hash),...staged]);
               for(const row of safe){if(!keep.has(row.hash))files.delete(row.hash);meta.delete('auto-regions:'+row.id+':'+row.hash);meta.delete('reader:'+row.id)}
+              if(safe.length){
+                const gone=new Set(safe.map(row=>row.id));
+                read(meta.get('library:recent'),rows=>{
+                  if(rows?.some(r=>gone.has(r.id)||gone.has(r.anchor))){
+                    meta.put(rows.filter(r=>!gone.has(r.id)).map(r=>gone.has(r.anchor)?{...r,anchor:r.id}:r),'library:recent');
+                  }
+                });
+              }
               meta.put(s,'archive');live.rows.splice(0,expected.length);
               if(live.rows.length)meta.put(live,journal);else meta.delete(journal);
               done({processed:expected.length,removed:safe.length});

@@ -16,14 +16,16 @@ import {reader} from './reader.js';
 const menus=['홈','자료실','오답노트','취약 영역','설정'],app=$('#app');
 let section='홈',revision=0,cleanup,readerAbort,readerRoute=null,restoreDetail=null;
 const nav=$('nav');nav.innerHTML=menus.map((m,i)=>'<button data-menu="'+i+'">'+m+'</button>').join('');
-const router=navigation(()=>({section,reader:readerRoute&&{...readerRoute},library:librarySnapshot(),notebook:notebookSnapshot(),y:window.scrollY}),async view=>{
+const openSettings=()=>[...app.querySelectorAll('details[data-settings-panel][open]')].map(panel=>panel.dataset.settingsPanel);
+const router=navigation(()=>({section,settings:section==='설정'?openSettings():[],reader:readerRoute&&{...readerRoute},library:librarySnapshot(),notebook:notebookSnapshot(),y:window.scrollY}),async view=>{
   restoreLibrary(view.library);restoreNotebook(view.notebook);restoreDetail=view.overlay?.detail;
   await show(view.section,view.reader?.id,view.reader?.number,view.reader||{});
+  if(view.section==='설정')for(const panel of app.querySelectorAll('details[data-settings-panel]'))panel.open=(view.settings||[]).includes(panel.dataset.settingsPanel);
   if(!view.reader)window.scrollTo(0,view.y);
 },canDismissForBack);
 function root(name){
   if($('#modal').open){if(!canDismissForBack())return;$('#modal').close()}
-  router.step();resetLibrary();resetNotebook();restoreDetail=null;window.scrollTo(0,0);return show(name);
+  router.step();resetLibrary();resetNotebook({},true);restoreDetail=null;window.scrollTo(0,0);return show(name);
 }
 function openReader(id,anchor,number,page){
   router.step();return show('자료실',id,number,{anchor,page});
@@ -71,7 +73,7 @@ async function show(name=section,id,number,position={}){section=name;readerRoute
  }else{
    app.ondrop=app.ondragover=null;
    const detail=restoreDetail;restoreDetail=null;
-   cleanup=mountNotebook(app,s,{detail,checkpoint:router.step,refresh:()=>show('오답노트'),openOriginal:(doc,n,anchor,page)=>openReader(doc,anchor,n,page)});
+   cleanup=mountNotebook(app,s,{detail,checkpoint:router.step,back:()=>{if(!router.back())return root('오답노트')},refresh:()=>show('오답노트'),openOriginal:(doc,n,anchor,page)=>openReader(doc,anchor,n,page)});
    return;
  }
  if(turn!==revision)return;
@@ -200,7 +202,7 @@ function extraFields(d,s,stat){
  (kind==='정답지'?'<label>정답 판본<select id="answer-edition"><option value="">미확인</option>'+options(['최종','잠정'],d.answerEdition)+'</select></label><label>출처<select id="answer-authority"><option value="">미확인</option>'+options(['공식','비공식'],d.authority)+'</select></label><label><input id="doc-combined" type="checkbox" '+(d.combined?'checked':'')+'> 통합 정답지</label>'+val('doc-forms','적용 책형 (쉼표로 구분)',d.forms?.join(', '))+'<div class="row">'+subjects.map(sub=>'<label><input type="checkbox" data-cover="'+sub+'" '+(d.answerSubjects?.includes(sub)?'checked':'')+'> '+sub+'</label>').join('')+'</div>':'')+
  '</details>'+(kind==='문제지'?'<details class="box"><summary>정답지·해설지 연결</summary><div id="doc-links"></div></details>':'');
 }
-async function settings(s,active){const ts=allThemes(s),space=await navigator.storage?.estimate?.();if(!active())return;app.innerHTML=header('설정')+'<p class="sub">기기 저장 · v0.6.0</p>'+'<h2>교재 및 테마</h2><div class="row">'+action('seed','목차 JSON 가져오기')+action('custom','테마 추가')+'</div>'+s.books.map(b=>'<details class="box"><summary>'+esc(b.subject+' · '+b.title)+'</summary>'+ts.filter(t=>t.book===b.id).map(t=>'<p>'+esc(t.path+' / '+(t.number||'')+' '+t.title+(t.page?' · p.'+t.page:''))+'</p>').join('')+'</details>').join('')+'<h2>전체 백업 및 복원</h2><p>최근 백업 · '+esc(s.lastBackup?.slice(0,10)||'아직 없음')+'</p><p class="sub">사이트 데이터 삭제나 저장 공간 정리에 대비해 PDF가 포함된 ZIP을 파일 앱에 보관하세요.</p><div class="row">'+action('backup','전체 백업 저장','primary')+action('restore','백업 복원')+action('merge-restore','백업 병합')+action('persist','영속 저장 요청')+'</div><p>사용 중인 공간 · '+(space?Math.round(space.usage/1048576)+' MB':'확인 불가')+'</p>';
+async function settings(s,active){const ts=allThemes(s),space=await navigator.storage?.estimate?.();if(!active())return;app.innerHTML='<div class="row"><button id="settings-back" hidden>‹ 뒤로</button><h1>설정</h1></div>'+'<p class="sub">기기 저장 · v0.6.0</p>'+'<h2>교재 및 테마</h2><div class="row">'+action('seed','목차 JSON 가져오기')+action('custom','테마 추가')+'</div>'+s.books.map(b=>'<details class="box" data-settings-panel="'+esc('book-'+b.id)+'"><summary>'+esc(b.subject+' · '+b.title)+'</summary>'+ts.filter(t=>t.book===b.id).map(t=>'<p>'+esc(t.path+' / '+(t.number||'')+' '+t.title+(t.page?' · p.'+t.page:''))+'</p>').join('')+'</details>').join('')+'<h2>전체 백업 및 복원</h2><p>최근 백업 · '+esc(s.lastBackup?.slice(0,10)||'아직 없음')+'</p><p class="sub">사이트 데이터 삭제나 저장 공간 정리에 대비해 PDF가 포함된 ZIP을 파일 앱에 보관하세요.</p><div class="row">'+action('backup','전체 백업 저장','primary')+action('restore','백업 복원')+action('merge-restore','백업 병합')+action('persist','영속 저장 요청')+'</div><p>사용 중인 공간 · '+(space?Math.round(space.usage/1048576)+' MB':'확인 불가')+'</p>';
  on('seed',async()=>{const [f]=await pick('.json');if(!f)return;const seed=JSON.parse(await f.text());themes(seed);await change(v=>{const books=[...v.books];for(const b of seed.books){const i=books.findIndex(x=>x.id===b.id);if(i<0)books.push(b);else books[i]=b}const rows=themes({schemaVersion:1,books});for(const q of v.questions)if([q.theme,...q.secondary].filter(Boolean).some(id=>!rows.some(t=>t.id===id&&t.enabled&&t.subject===v.documents.find(d=>d.id===q.doc)?.subject)))throw Error('기존 오답 테마 연결을 유지해야 합니다.');v.books=books});await show();notice('목차를 가져왔습니다.')});
  on('custom',()=>{modal('<h2>개인 테마 추가</h2><label>과목<select id="cs">'+options(subjects)+'</select></label><label>테마명<input id="ct"></label>'+action('csave','추가'),{protectEdits:true});on('csave',async()=>{const title=$('#ct').value.trim(),sub=$('#cs').value;if(!title)return;await change(v=>{let b=v.books.find(x=>x.id==='custom-'+sub);if(!b){b={id:'custom-'+sub,title:'개인 목차',subject:sub,themes:[]};v.books.push(b)}b.themes.push({id:uid(),title,number:String(b.themes.length+1)})});$('#modal').close();await show()})});
  on('backup',async()=>{
@@ -208,7 +210,14 @@ async function settings(s,active){const ts=allThemes(s),space=await navigator.st
    panel.setAttribute('aria-busy','true');
    try{await backup();await show();notice('백업 ZIP을 생성했습니다.')}finally{if(panel.isConnected)$('#modal').close()}
  });on('restore',()=>runRestore());on('merge-restore',()=>runRestore(true));on('persist',async()=>notice(await navigator.storage?.persist?.()?'영속 저장이 허용되었습니다.':'이 환경에서 영속 저장이 허용되지 않았습니다.'));
- const {storageTools}=await import('./storage-ui.js');if(!active())return;storageTools(app,s);app.insertAdjacentHTML('beforeend','<footer class="settings-credit">Made by Yuchan.</footer>');
+ const {storageTools}=await import('./storage-ui.js');if(!active())return;storageTools(app,s);
+ const backButton=$('#settings-back');
+ backButton.onclick=()=>{if(!router.back())root('설정')};
+ for(const panel of app.querySelectorAll('details[data-settings-panel]')){
+   panel.querySelector('summary').addEventListener('click',()=>{if(!panel.open)router.step()});
+   panel.addEventListener('toggle',()=>{if(panel.isConnected)backButton.hidden=!openSettings().length});
+ }
+ app.insertAdjacentHTML('beforeend','<footer class="settings-credit">Made by Yuchan.</footer>');
 }
 async function sampleLink(){
   if(!location.hash.startsWith('#sample?'))return;

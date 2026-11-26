@@ -45,6 +45,8 @@ try{
   await page.locator('[data-kind="해설지"]').click();assert.equal(await page.locator('[data-doc]').count(),1);
   await page.locator('[data-kind="정답지"]').click();await page.locator('[data-lib-sub="행정학"]').click();
   assert.deepEqual(await page.locator('[data-doc]').evaluateAll(bs=>bs.map(b=>b.dataset.doc)),['key']);
+  await click('scope-back');await page.locator('[data-lib-sub=""][aria-pressed=true]').waitFor();
+  assert.equal(await page.locator('[data-kind="정답지"]').getAttribute('aria-pressed'),'true');
   await nav('자료실');await page.locator('[data-lib-sub="행정법"]').click();await page.locator('#query').fill('가상 행정법');
   await page.waitForFunction(()=>document.querySelectorAll('[data-card]').length===1);
   await page.locator('[data-card="paper"] [data-open-material="paper"]').click();await loaded();
@@ -59,7 +61,9 @@ try{
   await swipe(18,100);await heading(paper.title);await swipe(130,6);
   await heading('자료실');assert.equal(await page.locator('#query').inputValue(),'가상 행정법');
   assert.equal(await page.locator('[data-card]').count(),1);
-  await nav('오답노트');await page.locator('[data-detail="paper#2"]').click();await click('goto-solution');await heading(sol.title);await loaded();
+  await nav('오답노트');await page.locator('[data-subject="행정법"]').click();
+  await click('notebook-back');await page.locator('[data-subject=""][aria-pressed=true]').waitFor();
+  await page.locator('[data-detail="paper#2"]').click();await click('goto-solution');await heading(sol.title);await loaded();
   assert.equal(await page.locator('#pg').inputValue(),'2');await click('view-back');await page.locator('#modal #goto-original').waitFor();
   await page.keyboard.press('Escape');await page.locator('#modal').waitFor({state:'hidden'});
   await nav('자료실');await click('library-edit');await page.locator('[data-select="old"]').check();await click('edit-selected');
@@ -84,6 +88,8 @@ try{
   a=await snapshot();assert.equal(a.documents.filter(d=>d.deleted).length,1);assert.ok(a.documents.find(d=>d.id==='shared'));
   assert.equal(a.events.length,2);assert.deepEqual(a.questions.find(q=>q.id==='paper#2').regions,s.questions[0].regions);
   await click('brand-home');await heading('학습 서재');await nav('설정');await page.locator('main > footer.settings-credit').waitFor();assert.equal(await page.locator('main > :last-child').textContent(),'Made by Yuchan.');
+  await page.locator('summary').filter({hasText:'저장 공간 관리'}).click();await click('settings-back');
+  await page.waitForFunction(()=>document.querySelector('[data-settings-panel="storage"]')?.open===false);
   await nav('자료실');await click('bring');
   const zip=new Zip(),path='2026/국가직9급/제1회/행정법_가_추가.pdf',bytes=Buffer.concat([pdf,Buffer.from('\n%manifest-study')]);
   const {PDFDocument}=require('pdf-lib'),appended=await PDFDocument.create();

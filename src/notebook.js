@@ -13,7 +13,8 @@ let filtersOpen=false, groupOpen=false, groupType='kind';
 const chosen=new Set(), pageSize=28;
 export const notebookSnapshot=()=>({filters:structuredClone(filters),page,filtersOpen,groupOpen,groupType});
 export function restoreNotebook(view){resetNotebook(view.filters);page=view.page;filtersOpen=view.filtersOpen;groupOpen=view.groupOpen;groupType=view.groupType}
-export function resetNotebook(values={}){
+export function resetNotebook(values={},closePanels=false){
+  if(closePanels)filtersOpen=groupOpen=false;
   filters={...emptyFilters(),...values};chosen.clear();page=0;editing=false;groupType='kind';
 }
 const button=(id,label,style='')=>'<button id="'+id+'" class="'+style+'">'+label+'</button>';
@@ -42,7 +43,7 @@ export function mountNotebook(app,archive,hooks){
     const count=globalCounts.get(name?'subject:'+name:'all')?.unique||0;
     return '<button data-subject="'+name+'">'+(name||'전체')+' <b>'+count+'</b></button>';
   }).join('');
-  app.innerHTML='<h1>오답노트</h1>'+
+  app.innerHTML='<div class="row"><button id="notebook-back" hidden>‹ 뒤로</button><h1>오답노트</h1></div>'+ 
     '<div class="subject-tabs" aria-label="오답 과목">'+tabs+'</div><div class="notebook-tools">'+
     '<details id="filters"><summary>필터 및 정렬</summary><div class="filter-grid"></div>'+
     '<details class="theme-options"><summary>교재 테마</summary><label>테마 검색<input type="search" id="f-theme-search" placeholder="테마 번호, 이름"></label><div class="check-list"></div><p id="empty-themes" hidden></p></details>'+
@@ -81,7 +82,17 @@ export function mountNotebook(app,archive,hooks){
     $('#nb-prev').disabled=page===0;$('#nb-next').disabled=(page+1)*pageSize>=list.length;
     $('.bulk-bar').hidden=!editing;$('#edit-notebook').textContent=editing?'편집 종료':'편집';updateSelection();
   }
+  function showBack(){
+    $('#notebook-back').hidden=!(filters.subject||filters.year||filters.exam||filters.book||filters.part||filters.chapter||
+      filters.themeIds.length||filters.kind||filters.status||filters.search||filters.sort!=='recent'||filterPanel.open||groupPanel.open);
+  }
+  for(const panel of [filterPanel,groupPanel]){
+    panel.querySelector('summary').addEventListener('click',()=>{if(!panel.open)hooks.checkpoint?.()});
+    panel.addEventListener('toggle',()=>{if(panel.isConnected)showBack()});
+  }
+  on('notebook-back',hooks.back);
   function updateResults(){
+    showBack();
     list=searchRows(candidates,filters.search);
     if(chosen.size){
       const ids=new Set(list.map(row=>row.id));
@@ -91,6 +102,7 @@ export function mountNotebook(app,archive,hooks){
   }
   const search=bindSearch(field,value=>{
     const changed=searchKey(filters.search).trim()!==searchKey(value).trim();
+    if(!filters.search&&value)hooks.checkpoint?.();
     filters.search=value;
     if(changed){page=0;chosen.clear();updateResults()}
   });

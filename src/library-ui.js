@@ -35,10 +35,18 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
   const index=materialIndex(docs);
   const byId=new Map(docs.map(d=>[d.id,d])),stats=studyStats(s);
   const kindCounts=new Map(),subjectCounts=new Map();
-  for(const d of docs.filter(d=>!!d.deleted===f.trash)){const k=materialKind(d);kindCounts.set(k,(k==='전체 자료'?docs.filter(d=>d.deleted).length:kindCounts.get(k)||0)+1);for(const sub of ['',...subjects,'통합','미분류'])if(coversSubject(d,sub)){const key=k+'|'+sub;subjectCounts.set(key,(subjectCounts.get(key)||0)+1)}}
+  for(const d of docs){
+    if(!!d.deleted!==f.trash)continue;
+    const k=materialKind(d);
+    for(const key of [k,'전체 자료'])kindCounts.set(key,(kindCounts.get(key)||0)+1);
+    for(const sub of ['',...subjects,'통합','미분류']){
+      if(!coversSubject(d,sub))continue;
+      for(const group of [k,'전체 자료']){const key=group+'|'+sub;subjectCounts.set(key,(subjectCounts.get(key)||0)+1)}
+    }
+  }
   const rows=docs.map(d=>({d,text:searchKey([d.title,d.filename,d.tags,d.agency,d.form].filter(Boolean).join(' '))}))
     .sort((a,b)=>Number(!!b.d.favorite)-Number(!!a.d.favorite)||String(b.d.year||'').localeCompare(String(a.d.year||''))||titleOrder.compare(a.d.title||'',b.d.title||''));
-  app.innerHTML='<div class="toolbar">'+(f.trash?action('trash-back','‹ 뒤로'):'')+'<h1>'+(f.trash?'자료실 휴지통':'자료실')+'</h1><div class="row">'+action('bring','자료 가져오기','primary')+action('inventory','보유 현황')+action('library-edit','편집')+action('trash',f.trash?'자료실 보기':'휴지통')+'</div></div>'+
+  app.innerHTML='<div class="toolbar">'+action(f.trash?'trash-back':'scope-back','‹ 뒤로')+'<h1>'+(f.trash?'자료실 휴지통':'자료실')+'</h1><div class="row">'+action('bring','자료 가져오기','primary')+action('inventory','보유 현황')+action('library-edit','편집')+action('trash',f.trash?'자료실 보기':'휴지통')+'</div></div>'+
     '<div id="kind-tabs" class="subject-tabs" aria-label="자료 유형"></div><div id="lib-subjects" class="subject-tabs" aria-label="자료 과목"></div><label>제목·태그 검색<input id="query" type="search" value="'+esc(f.query)+'"></label><details class="box library-filters" '+(f.filterOpen?'open':'')+'><summary>필터 및 정렬</summary><div class="row filters"><label>과목<select id="subject">'+options(['전체 과목',...subjects,'통합','미분류'],f.subject)+'</select></label><label>연도<select id="year">'+options(['전체 연도',...new Set(active.map(d=>String(d.year||'')).filter(Boolean).sort().reverse())],f.year)+'</select></label>'+
     '<label>시험<select id="exam">'+options(['전체 시험',...new Set([...s.examTypes,...active.map(d=>d.exam).filter(Boolean)])],f.exam)+'</select></label><label>풀이 상태<select id="study-filter">'+options(['전체 상태',...studyStates],f.status)+'</select></label>'+
     '<label><input id="review-filter" type="checkbox" '+(f.review?'checked':'')+'> 분류 검토</label><label>추가 필터<select id="lib-extra">'+options(['전체','즐겨찾기','최근 열람','정답지 미보유','해설지 미보유','연결 검토 필요','미분류 자료','기타 자료'],f.extra)+'</select></label><label>정렬<select id="lib-order">'+options(['연도순','최근 열람순','제목순','즐겨찾기순'],f.order)+'</select></label>'+action('link-coverage','정답·해설 연결 현황')+'</div></details><div id="trash-actions" class="row"></div>'+
@@ -47,13 +55,18 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
   let current=[],page=f.page,editing=false,selected=new Set();
   const trashActions=at('trash-actions');
   let journal;
+  let paintedTabs;
   function tabs(){
+    const scopeBack=at('scope-back');
+    if(scopeBack)scopeBack.hidden=!(f.kind!=='문제지'||f.subject||f.year||f.exam||f.status||f.extra||f.query||f.review||f.order!==defaults.order||f.filterOpen);
+    const tabState=[f.kind,f.subject,f.extra==='기타 자료'].join('|');
+    if(tabState===paintedTabs)return;paintedTabs=tabState;
     at('kind-tabs').innerHTML=(f.trash?['전체 자료',...kinds]:kinds).map(k=>'<button data-kind="'+k+'" aria-pressed="'+(k===f.kind&&f.extra!=='기타 자료')+'">'+k+' '+(kindCounts.get(k)||0)+'</button>').join('');
-    at('lib-subjects').innerHTML=['',...subjects].map(sub=>'<button data-lib-sub="'+sub+'" aria-pressed="'+(sub===f.subject)+'">'+(sub||'전체')+' '+(f.kind==='전체 자료'?docs.filter(d=>d.deleted&&coversSubject(d,sub)).length:subjectCounts.get((f.extra==='기타 자료'?'기타 자료':f.kind)+'|'+sub)||0)+'</button>').join('');
+    at('lib-subjects').innerHTML=['',...subjects].map(sub=>'<button data-lib-sub="'+sub+'" aria-pressed="'+(sub===f.subject)+'">'+(sub||'전체')+' '+(subjectCounts.get((f.extra==='기타 자료'?'기타 자료':f.kind)+'|'+sub)||0)+'</button>').join('');
   }
   function trashBar(){
     if(!f.trash)return;
-    const count=docs.filter(d=>d.deleted).length;
+    const count=kindCounts.get('전체 자료')||0;
     trashActions.innerHTML='<button id="trash-select-all">전체 선택</button><button id="restore-marked" '+(!selected.size?'disabled':'')+'>선택 복원</button><button id="purge-marked" '+(!selected.size?'disabled':'')+'>선택 영구 삭제</button><button id="empty-library-trash" class="danger" '+(!count?'disabled':'')+'>휴지통 비우기</button>'+
       (journal?'<button id="resume-purge">중단된 삭제 확인</button><button id="cancel-pending">삭제 대기 해제</button>':'');
   }
@@ -71,7 +84,9 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
   });
   at('kind-tabs').onclick=e=>{const b=e.target.closest('[data-kind]');if(!b)return;checkpoint();f.kind=b.dataset.kind;if(f.extra==='기타 자료'){f.extra='';at('lib-extra').selectedIndex=0}draw()};
   at('lib-subjects').onclick=e=>{const b=e.target.closest('[data-lib-sub]');if(!b)return;checkpoint();f.subject=b.dataset.libSub;at('subject').value=f.subject||'전체 과목';draw()};
-  app.querySelector('.library-filters').ontoggle=e=>{f.filterOpen=e.target.open};
+  const filterPanel=app.querySelector('.library-filters');
+  filterPanel.querySelector('summary').addEventListener('click',()=>{if(!filterPanel.open)checkpoint()});
+  filterPanel.ontoggle=e=>{if(e.target.isConnected){f.filterOpen=e.target.open;tabs()}};
   at('link-coverage').onclick=()=>coverage(index,f.subject);
   function editBar(){
     tools.hidden=!editing;if(!editing)return;
@@ -108,10 +123,10 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
     else if(f.order==='연도순')current.sort((a,b)=>String(b.d.year||'').localeCompare(a.d.year||'')||titleOrder.compare(a.d.title||'',b.d.title||''));
     if(reset)page=0;selected.clear();paint();
   }
-  const search=bindSearch(at('query'),value=>{f.query=value;draw()});
+  const search=bindSearch(at('query'),value=>{if(!f.query&&value)checkpoint();f.query=value;draw()});
   for(const [id,key] of [['subject','subject'],['year','year'],['exam','exam'],['study-filter','status'],['lib-extra','extra'],['lib-order','order']])at(id).onchange=e=>{checkpoint();f[key]=e.target.selectedIndex||key==='order'?e.target.value:'';draw()};
   at('review-filter').onchange=e=>{checkpoint();f.review=e.target.checked;draw()};at('bring').onclick=guard(()=>bring());
-  at('inventory').onclick=guard(()=>inventory(f.subject));at('trash').onclick=guard(()=>{if(f.trash&&back)return back();checkpoint();Object.assign(f,defaults,{trash:!f.trash,kind:f.trash?'문제지':'전체 자료'});return refresh()});if(at('trash-back'))at('trash-back').onclick=back;
+  at('inventory').onclick=guard(()=>inventory(f.subject));at('trash').onclick=guard(()=>{if(f.trash&&back)return back();checkpoint();Object.assign(f,defaults,{trash:!f.trash,kind:f.trash?'문제지':'전체 자료'});return refresh()});at(f.trash?'trash-back':'scope-back').onclick=back;
   at('library-edit').onclick=()=>{editing=!editing;at('library-edit').textContent=editing?'편집 마침':'편집';selected.clear();paint()};
   pages.onclick=e=>{const b=e.target.closest('button');if(!b)return;page+=b.id==='list-next'?1:-1;paint();results.scrollIntoView({block:'start'})};
   results.onchange=e=>{const id=e.target.dataset.select;if(!id)return;if(e.target.checked)selected.add(id);else selected.delete(id);editBar();trashBar()};

@@ -7,7 +7,7 @@ const size=n=>n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';
 export function storageTools(app,s){
   const area=document.createElement('div');app.append(area);
   area.innerHTML='<details class="box"><summary>저장 공간 관리</summary><p role="status">계산 중…</p>'+action('clean-temporary','임시 캐시 정리')+'</details><h2>앱 업데이트</h2><div class="row">'+action('check-update','최신 버전 확인')+action('apply-update','업데이트 적용')+'</div><p class="sub" id="update-result"></p>';
-  const details=area.querySelector('details');let measured=false;
+  const details=area.querySelector('details');details.dataset.settingsPanel='storage';let measured=false;
   async function measure(){
     if(!details.open||measured)return;measured=true;
     const {byHash,bySubject,bytes,keyBytes,unknown}=spaceStats(s);let total=bytes,answers=keyBytes,unavailable=0;
