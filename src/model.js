@@ -1,3 +1,4 @@
+import {recordAdded,recordWithdrawn} from './study-events.js';
 export const subjects=['국어','영어','행정법','행정학'];
 export function initial(){return {version:1,documents:[],questions:[],events:[],reviews:[],sessions:[],books:[],examTypes:['국가직 9급','지방직 9급','국가직 7급','지방직 7급','서울시','기타'],lastBackup:null}}
 export function themes(seed){
@@ -12,11 +13,16 @@ export function themes(seed){
 }
 export function record(s,doc,session,numbers){
  const selected=new Set(numbers),date=new Date().toISOString();
+ const existing=new Set(),questions=new Map(s.questions.filter(q=>q.doc===doc.id).map(q=>[q.id,q]));
  if([...selected].some(n=>!Number.isInteger(n)||n<1||n>doc.count))throw Error('문항 범위를 확인하세요.');
- s.events=s.events.filter(e=>e.session!==session||selected.has(e.number));
+ s.events=s.events.filter(e=>{
+   if(e.session!==session)return true;
+   if(!selected.has(e.number)){recordWithdrawn(s,e);return false}
+   existing.add(e.q);return true;
+ });
  for(const number of selected){const id=doc.id+'#'+number;
- let q=s.questions.find(x=>x.id===id);if(!q){q={id,doc:doc.id,number,regions:[],theme:null,secondary:[],status:'미복습',memo:''};s.questions.push(q)}
- if(!s.events.some(e=>e.session===session&&e.q===id)){s.events.push({id:session+'#'+number,q:id,session,number,date,instance:crypto.randomUUID()});if(q.status==='숙지 완료')q.status='복습 필요'}
+ let q=questions.get(id);if(!q){q={id,doc:doc.id,number,regions:[],theme:null,secondary:[],status:'미복습',memo:''};s.questions.push(q)}
+ if(!existing.has(id)){const event={id:session+'#'+number,q:id,session,number,date,instance:crypto.randomUUID()};s.events.push(event);if(q.status==='숙지 완료')q.status='복습 필요';recordAdded(s,event)}
  }}
 export function stats(s){const count=new Map();for(const e of s.events)count.set(e.q,(count.get(e.q)||0)+1);return count}
 export function infer(name){return {subject:subjects.find(x=>name.includes(x))||'미분류',year:name.match(/(?:19|20)\d{2}/)?.[0]||'',exam:name.match(/(?:국가직|지방직)\s*[79]급|서울시/)?.[0].replace(/(직)\s*/,'$1 ')||''}}

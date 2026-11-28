@@ -49,7 +49,7 @@ export function mountNotebook(app,archive,hooks){
     '<details class="theme-options"><summary>교재 테마</summary><label>테마 검색<input type="search" id="f-theme-search" placeholder="테마 번호, 이름"></label><div class="check-list"></div><p id="empty-themes" hidden></p></details>'+
     '<label>문제 텍스트 검색<input id="f-search" type="search" value="'+esc(filters.search)+'" placeholder="문제 본문, 시험지명, 메모"></label>'+button('f-clear','필터 초기화')+'</details>'+
     '<details id="group-panel"><summary>분류별 현황</summary><label>분류 기준<select id="group-type"></select></label><div class="facet-list"></div></details></div>'+
-    '<div class="notebook-summary"><p class="notebook-counts"></p><div class="row">'+button('edit-notebook','편집')+button('print','A4 PDF 출력','primary')+'</div></div><div class="bulk-bar" hidden><span id="selection-count"></span>'+button('select-all','현재 목록 전체 선택')+button('select-none','선택 해제')+button('bulk-theme','테마 지정')+button('bulk-master','숙지 완료')+button('bulk-print','선택 PDF')+button('bulk-regions','영역 재분석')+button('bulk-remove','선택 제거','danger')+'</div>'+
+    '<div class="notebook-summary"><p class="notebook-counts"></p><div class="row">'+button('study-log','학습 기록 추출')+button('edit-notebook','편집')+button('print','A4 PDF 출력','primary')+'</div></div><div class="bulk-bar" hidden><span id="selection-count"></span>'+button('select-all','현재 목록 전체 선택')+button('select-none','선택 해제')+button('bulk-theme','테마 지정')+button('bulk-master','숙지 완료')+button('bulk-print','선택 PDF')+button('bulk-regions','영역 재분석')+button('bulk-remove','선택 제거','danger')+'</div>'+
     '<div class="notebook-list"></div><div class="row pager" hidden>'+button('nb-prev','이전')+'<span id="nb-page"></span>'+button('nb-next','다음')+'</div>'+
     '<div class="notebook-foot">'+button('mistake-trash','오답 휴지통'+(archive.removedMistakes?.length?' ('+new Set(archive.removedMistakes.flatMap(b=>b.events.map(e=>e.q))).size+')':''))+analysisControls()+'</div>';
 
@@ -186,6 +186,7 @@ export function mountNotebook(app,archive,hooks){
     hooks.checkpoint?.();filters={...emptyFilters(),subject:filters.subject,...(groupType==='theme'?{themeIds:[b.dataset.group]}:{[groupType]:b.dataset.group})};
     page=0;chosen.clear();search.reset();themeSearch.reset();themeQuery='';drawFilters();applyFilters();groupPanel.open=false;
   });
+  on('study-log',async()=>{const {openStudyLog}=await import('./study-ui.js');return openStudyLog(hooks.refresh,archive)});
   on('edit-notebook',()=>{editing=!editing;chosen.clear();drawList()});
   cards.onclick=guard(e=>{const b=e.target.closest('[data-detail]');if(b)return openDetail(archive,index,index.byId.get(b.dataset.detail),hooks)});
   cards.onchange=e=>{const b=e.target.closest('[data-pick]');if(!b)return;if(b.checked)chosen.add(b.dataset.pick);else chosen.delete(b.dataset.pick);updateSelection()};

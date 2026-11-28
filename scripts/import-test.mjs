@@ -57,7 +57,7 @@ try{
   console.log(engine+': seeding existing version 1 data');
   await page.evaluate(async({archive,bytes,hash})=>{
     const db=await new Promise((resolve,reject)=>{
-      const req=indexedDB.open('yu-study-archive',1);
+      const req=indexedDB.open('yu-study-archive');
       req.onupgradeneeded=()=>{req.result.createObjectStore('meta');req.result.createObjectStore('files')};
       req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
     });
@@ -75,7 +75,7 @@ try{
   async function saved(){
     return page.evaluate(async()=>{
       const db=await new Promise((resolve,reject)=>{
-        const req=indexedDB.open('yu-study-archive',1);
+        const req=indexedDB.open('yu-study-archive');
         req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
       });
       const result=await new Promise((resolve,reject)=>{

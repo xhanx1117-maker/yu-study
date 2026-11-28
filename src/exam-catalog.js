@@ -1,3 +1,4 @@
+import {completeSession} from './study-events.js';
 import {specificExams,sitting,compact} from './exam-identity.js';
 import {subjects} from './model.js';
 import {materialIndex,mixedType} from './materials.js';
@@ -111,7 +112,7 @@ export function setStudy(s,doc,value,now=new Date().toISOString()){
   doc.studyState=value;
   if(value==='풀이 완료'){
     const session=s.sessions.find(a=>a.id===doc.session&&a.doc===doc.id);
-    if(session&&!session.solvedAt)session.solvedAt=now;
+    completeSession(s,session,now);
   }
   if(value==='복습 완료')doc.lastReview=now;
 }

@@ -1,7 +1,7 @@
 name: Test and publish Yu study
 on:
   push:
-    branches: [main, notebook-workbooks-v03, exam-print-v04, bulk-library-v05, library-companions-v06, link-audit-v061]
+    branches: [main, notebook-workbooks-v03, exam-print-v04, bulk-library-v05, library-companions-v06, link-audit-v061, daily-study-v062]
   workflow_dispatch:
 permissions:
   contents: read
@@ -102,6 +102,12 @@ jobs:
         env:
           YU_BROWSER: /usr/bin/google-chrome
       - run: npx playwright install --with-deps webkit
+      - name: Validate indexed study history, clipboard, correction and backup in both engines
+        run: |
+          node scripts/study-test.mjs
+          YU_TEST_ENGINE=webkit node scripts/study-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
       - name: Validate existing archive repair and resumable inspections in Chromium and tablet WebKit
         run: |
           node scripts/link-audit-test.mjs

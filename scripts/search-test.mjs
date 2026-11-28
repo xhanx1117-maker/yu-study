@@ -43,7 +43,7 @@ try{
     }
   }
   await page.evaluate(async archive=>{
-    const db=await new Promise((res,rej)=>{const r=indexedDB.open('yu-study-archive',1);
+    const db=await new Promise((res,rej)=>{const r=indexedDB.open('yu-study-archive');
       r.onupgradeneeded=()=>{r.result.createObjectStore('meta');r.result.createObjectStore('files')};
       r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
     await new Promise((res,rej)=>{const tx=db.transaction('meta','readwrite');tx.objectStore('meta').put(archive,'archive');tx.oncomplete=res;tx.onabort=()=>rej(tx.error)});

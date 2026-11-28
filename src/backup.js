@@ -1,3 +1,4 @@
+import {restoreStudy,verifyStudyRows} from './study-store.js';
 import {mergeEvidence} from './link-evidence.js';
 import {state,get,change,hash,digestBytes,transaction,exclusive,entries} from './db.js';
 import {validate,initial} from './model.js';
@@ -6,12 +7,12 @@ import {openZip,makeZip} from './archive-zip.js';
 
 export function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000)}
 const externalKey=d=>'auto-regions:'+d.id+':'+d.hash;
-async function portableMeta(s){
+async function portableMeta(s,studyLog){
   // Serialize one paper at a time. Old clients can open this version-1 backup:
   // generated regions are folded into their original detected field on export.
   const {documents,...rest}=s;
   const viewer={positions:await entries('reader:'),recent:await get('meta','library:recent')||[]};
-  const parts=[JSON.stringify({...rest,viewer}).slice(0,-1),',"documents":['];
+  const parts=[JSON.stringify({...rest,viewer,studyLog}).slice(0,-1),',"documents":['];
   for(const [index,d] of documents.entries()){
     let doc=d;
     if(d.externalRegions){
@@ -24,7 +25,10 @@ async function portableMeta(s){
 }
 export async function backup(){
   return exclusive(async()=>{
-    const s=await state(),created=new Date().toISOString(),meta=await portableMeta(s),keys=[...new Set(s.documents.map(d=>d.hash))];
+    const snapshot=await transaction(['meta','studyLog'],'readonly',({meta,studyLog},read,done)=>{
+      const result={};read(meta.get('archive'),s=>{result.archive=s||initial()});read(studyLog.getAll(),rows=>{result.rows=rows});done(result);
+    });
+    const s=snapshot.archive,created=new Date().toISOString(),meta=await portableMeta(s,snapshot.rows),keys=[...new Set(s.documents.map(d=>d.hash))];
     const manifest={format:'yu-study',version:1,created,files:keys,metadataHash:await hash(meta)};
     async function* members(){
       yield {path:'archive.json',blob:meta};yield {path:'manifest.json',blob:new Blob([JSON.stringify(manifest)])};
@@ -93,7 +97,7 @@ export async function restore(file,{merge=false}={}){
     const manifest=JSON.parse(await (await read('manifest.json')).text()),meta=await read('archive.json');
     if(manifest.format!=='yu-study'||manifest.version!==1||await hash(meta)!==manifest.metadataHash)throw Error('백업 형식 또는 체크섬 오류');
     const incoming=validate(JSON.parse(await meta.text())),keys=[...new Set(incoming.documents.map(d=>d.hash))],expected=new Set(manifest.files);
-    const viewer=incoming.viewer;delete incoming.viewer;
+    const viewer=incoming.viewer,studyRows=verifyStudyRows(incoming.studyLog);delete incoming.viewer;delete incoming.studyLog;
     if(!Array.isArray(manifest.files)||expected.size!==keys.length||manifest.files.length!==keys.length||keys.some(k=>!expected.has(k)))throw Error('파일 목록 불일치');
     if(!confirm('PDF '+incoming.documents.length+'건과 오답 이력 '+incoming.events.length+'건을 '+(merge?'기존 자료에 병합할까요? 같은 문항의 기존 메모와 테마를 유지합니다.':'복원하여 현재 자료를 교체할까요? 현재 자료를 유지하려면 취소하고 ‘백업 병합’을 선택하세요.')))return false;
     const before=JSON.stringify(await state());
@@ -105,7 +109,7 @@ export async function restore(file,{merge=false}={}){
           if(!exists){files.add(new Blob([bytes],{type:'application/pdf'}),k);meta.put(true,stage+k)}
         }));
       }
-      await transaction(['meta','files'],'readwrite',({meta,files},read)=>read(meta.get('archive'),raw=>{
+      await transaction(['meta','files','studyLog'],'readwrite',({meta,files,studyLog},read)=>read(meta.get('archive'),raw=>{
         const current=raw||initial();
         if(JSON.stringify(current)!==before)throw Error('복원 중 다른 창에서 자료가 바뀌었습니다. 다시 시도해 주세요.');
         const next=merge?mergeRecords(current,incoming):reconcilePurged(incoming,current.purgedAttempts);
@@ -126,7 +130,7 @@ export async function restore(file,{merge=false}={}){
           });
         }
         for(const k of keys)meta.delete(stage+k);
-        meta.put(next,'archive');
+        restoreStudy(studyLog,read,next,incoming,studyRows,merge,()=>meta.put(next,'archive'));
       }));
       return true;
     }finally{await cleanRestoreStage()}

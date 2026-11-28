@@ -42,7 +42,7 @@ try{
   });
   const {archive,files,source}=await fixture(Buffer.from(ko,'base64'));
   await page.evaluate(async({archive,files})=>{
-    const db=await new Promise((res,rej)=>{const r=indexedDB.open('yu-study-archive',1);
+    const db=await new Promise((res,rej)=>{const r=indexedDB.open('yu-study-archive');
       r.onupgradeneeded=()=>{r.result.createObjectStore('meta');r.result.createObjectStore('files')};
       r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
     await new Promise((res,rej)=>{const tx=db.transaction(['meta','files'],'readwrite');
@@ -53,7 +53,7 @@ try{
   if(out){fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'source.pdf'),source)}
   async function readArchive(){
     return page.evaluate(async()=>{
-      const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('yu-study-archive',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+      const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('yu-study-archive');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
       try{return await new Promise((res,rej)=>{const r=db.transaction('meta').objectStore('meta').get('archive');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
       finally{db.close()}
     });
@@ -345,7 +345,7 @@ try{
   assert.deepEqual(afterTrash.books,beforeTrash.books);
   assert.equal((afterTrash.removedMistakes||[]).length,0);
   const fileHashes=await page.evaluate(async()=>{
-    const db=await new Promise(res=>{const r=indexedDB.open('yu-study-archive',1);r.onsuccess=()=>res(r.result)});
+    const db=await new Promise(res=>{const r=indexedDB.open('yu-study-archive');r.onsuccess=()=>res(r.result)});
     const store=db.transaction('files').objectStore('files');
     const [keys,values]=await Promise.all([store.getAllKeys(),store.getAll()].map(r=>new Promise(res=>{r.onsuccess=()=>res(r.result)})));db.close();
     return Promise.all(values.map(async(v,i)=>[keys[i],Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await v.arrayBuffer())),b=>b.toString(16).padStart(2,'0')).join('')]));

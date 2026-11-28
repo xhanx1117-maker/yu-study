@@ -57,3 +57,8 @@ input[type=checkbox]{width:19px;height:19px;min-height:0;padding:0;accent-color:
 button.brand{background:transparent;border:0;border-radius:6px;padding:0;justify-content:flex-start;min-height:44px;text-align:left}.workspace-tabs{margin:0 0 14px}
 
 .audit-pick{display:block;margin-block:.4rem}.audit-pick small,#audit-review article small{display:block;margin-inline-start:1.6rem}
+
+.study-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr));gap:.75rem}
+.study-entry{display:flex;align-items:center;gap:.6rem;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid #365746;padding:.6rem 0}
+.study-entry small{display:block;color:#bbcebf}.study-correction{flex-basis:100%}
+#study-preview textarea{width:100%;min-height:13rem}#study-feedback:empty{display:none}

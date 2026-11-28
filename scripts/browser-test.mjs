@@ -15,7 +15,7 @@ async function waitForStorage(page,test,arg){
 async function storedArchive(page,seed=false){
   return page.evaluate(async seed=>{
     const read=request=>new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
-    const db=await read(indexedDB.open('yu-study-archive',1));
+    const db=await read(indexedDB.open('yu-study-archive'));
     try{
       const s=await read(db.transaction('meta').objectStore('meta').get('archive'));
       if(seed){

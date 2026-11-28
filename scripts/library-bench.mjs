@@ -15,7 +15,7 @@ try{
     const ctx=await browser.newContext({viewport:{width:834,height:1194},hasTouch:true});
     const page=await ctx.newPage();await page.goto(url+'/seed.html');
     await page.evaluate(async({count,seed,bytes})=>{
-      const request=indexedDB.open('yu-study-archive',1);
+      const request=indexedDB.open('yu-study-archive');
       request.onupgradeneeded=()=>{request.result.createObjectStore('meta');request.result.createObjectStore('files')};
       const db=await new Promise(resolve=>request.onsuccess=()=>resolve(request.result));
       const prefix=new Uint8Array(bytes);
