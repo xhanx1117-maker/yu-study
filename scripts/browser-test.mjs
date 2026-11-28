@@ -22,7 +22,7 @@ async function storedArchive(page,seed=false){
         s.books.push({id:'fiction-book',subject:'영어',title:'가상 교재',themes:[{id:'fiction-theme',title:'가상 주제',number:'01'}]});
         const q=s.questions[0];q.theme='fiction-theme';q.memo='업데이트 전 가상 메모';q.reviewed=true;
         const second={...q,id:q.doc+'#2',number:2};s.questions.push(second);
-        s.removedMistakes=[{id:'fiction-trash',date:s.events[0].date,events:[{...s.events[0],id:q.doc+'-trashed',q:second.id,number:2}]}];
+        s.removedMistakes=[{id:'fiction-trash',date:s.events[0].date,events:[{...s.events[0],id:q.doc+'-trashed',instance:crypto.randomUUID(),q:second.id,number:2}]}];
         s.reviews.push({id:'fiction-review',q:q.id,date:s.events[0].date,status:'부분 이해'});
         await new Promise((resolve,reject)=>{const tx=db.transaction('meta','readwrite');tx.objectStore('meta').put(s,'archive');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error)});
       }
@@ -82,7 +82,14 @@ if(previous){
     console.error('Scripts / cache',await reopened.evaluate(async()=>[document.scripts[0]?.src,await caches.keys()]));throw error;
   });
 }
-assert.deepEqual(await storedArchive(reopened),before);
+const after=await storedArchive(reopened);
+assert.equal(before.database,previous?1:2);assert.equal(after.database,2);
+assert.deepEqual(after.archive,before.archive);assert.equal(after.original,before.original);
+if(previous){
+  await reopened.getByRole('button',{name:'오답노트',exact:true}).click();await reopened.locator('#study-log').click();
+  await reopened.waitForFunction(()=>document.querySelector('#study-summary')?.textContent.includes('고유 오답 2문항'));
+  await reopened.locator('dialog form button').click();
+}
 // WebKit's offline emulation rejects even literal service-worker responses
 // (microsoft/playwright#42775). Stop the origin for both engines instead;
 // Chromium also exercises the browser's offline flag.

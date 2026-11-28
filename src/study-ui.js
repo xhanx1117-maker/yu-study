@@ -8,7 +8,7 @@ import {download} from './backup.js';
 const presets=['오늘','어제','최근 7일','최근 30일','이번 주','이번 달','직접 날짜 지정'];
 const clock=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hour12:false});
 export function openStudyLog(refresh,archive){
-  let lookup;
+  let lookup,queryKey;
   let changed=false,request=0,rows=[],report=null,offset=0,copyTimer;
   const panel=modal('<h2>학습 기록 추출</h2><div class="study-fields"><label>학습 기간<select id="study-period">'+options(presets,'오늘')+
     '</select></label><label>과목<select id="study-subject">'+options(['전체',...subjects,'미분류'],'전체')+'</select></label></div>'+
@@ -30,8 +30,11 @@ export function openStudyLog(refresh,archive){
     field('pages').innerHTML=rows.length>24?'<button data-turn="-1" '+(offset?'':'disabled')+'>이전</button><span>'+Math.floor(offset/24+1)+' / '+Math.ceil(rows.length/24)+'</span><button data-turn="1" '+(offset+24<rows.length?'':'disabled')+'>다음</button>':'';
   }
   function feedback(message){clearTimeout(copyTimer);field('feedback').textContent=message;copyTimer=setTimeout(()=>field('feedback').textContent='',2500)}
-  async function load(){
-    const n=++request,from=field('from').value,to=field('to').value,subject=field('subject').value;
+  async function load(force=false){
+    const from=field('from').value,to=field('to').value,subject=field('subject').value;
+    const key=JSON.stringify([from,to,subject]);
+    if(!force&&key===queryKey)return;
+    queryKey=key;const n=++request;
     rows=[];report=null;field('copy').disabled=field('export').disabled=true;offset=0;drawHistory();showPreview();
     if(!validDay(from)||!validDay(to)||from>to){field('summary').textContent='시작일과 종료일을 확인하세요.';return}
     field('summary').textContent='학습 기록을 읽는 중…';
@@ -50,10 +53,13 @@ export function openStudyLog(refresh,archive){
       const s=report.summary;
       field('summary').textContent=rows.length?'고유 오답 '+s.unique+'문항 · 신규 '+s.new+'회 · 반복 '+s.repeated+'회 · 풀이 완료 시험지 '+s.completedPapers+'개':'이 기간에 저장된 학습 기록이 없습니다.';
       field('copy').disabled=field('export').disabled=!rows.length;showPreview();drawHistory();
-    }catch(error){if(n===request)field('summary').textContent='기록을 읽지 못했습니다. '+error.message}
+    }catch(error){if(n===request){queryKey=null;field('summary').textContent='기록을 읽지 못했습니다. '+error.message}}
   }
   field('period').onchange=()=>{const custom=field('period').value===presets.at(-1);field('dates').hidden=!custom;if(!custom)setRange();load()};
-  field('from').onchange=field('to').onchange=field('subject').onchange=load;
+  for(const name of ['from','to']){
+    field(name).oninput=field(name).onchange=()=>load();
+  }
+  field('subject').onchange=()=>load();
   field('prompt').onchange=field('preview').ontoggle=showPreview;field('history').ontoggle=drawHistory;
   field('pages').onclick=e=>{const b=e.target.closest('[data-turn]');if(b){offset+=Number(b.dataset.turn)*24;drawHistory()}};
   field('copy').onclick=guard(async()=>{
@@ -81,7 +87,7 @@ export function openStudyLog(refresh,archive){
     const b=e.target.closest('[data-save-day],[data-withdraw]');if(!b)return;
     const cancel=b.hasAttribute('data-withdraw'),row=rows[Number(cancel?b.dataset.withdraw:b.dataset.saveDay)],date=cancel?null:line.querySelector('input').value;
     if(cancel&&!confirm(row.title+' · '+(row.kind==='wrong'?row.number+'번 오답':'풀이 완료')+' 기록을 취소할까요?'+(row.kind==='wrong'?' 해당 회차의 오답 표시도 해제됩니다.':'')))return;
-    await correctStudy(row,date);changed=true;await load();feedback(cancel?'기록을 취소했습니다.':'학습 날짜를 정정했습니다.');
+    await correctStudy(row,date);changed=true;await load(true);feedback(cancel?'기록을 취소했습니다.':'학습 날짜를 정정했습니다.');
   });
   $('#modal').addEventListener('close',()=>{request++;clearTimeout(copyTimer);if(changed)refresh?.()},{once:true});
   setRange();return load();

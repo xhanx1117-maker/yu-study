@@ -120,18 +120,18 @@ jobs:
           YU_TEST_ENGINE: webkit
       - uses: actions/checkout@v4
         with:
-          ref: 3512b12eb004e7355fe199e223cf4b15ed090f44
-          path: deployed-v060
-      - name: Upgrade an installed v0.6.0 app with existing files, study and trash history
+          ref: b7dbd160dbc818d34f3dec2272b03c82958e953e
+          path: deployed-v061
+      - name: Upgrade an installed v0.6.1 app with existing files, study and trash history
         run: |
-          ln -s "$GITHUB_WORKSPACE/node_modules" deployed-v060/node_modules
-          npm --prefix deployed-v060 run build
+          ln -s "$GITHUB_WORKSPACE/node_modules" deployed-v061/node_modules
+          npm --prefix deployed-v061 run build
           node scripts/browser-test.mjs
           YU_TEST_ENGINE=webkit node scripts/browser-test.mjs
         env:
           YU_BROWSER: /usr/bin/google-chrome
-          YU_PREVIOUS_VERSION: 0.6.0
-          YU_PREVIOUS_DIST: deployed-v060/dist
+          YU_PREVIOUS_VERSION: 0.6.1
+          YU_PREVIOUS_DIST: deployed-v061/dist
   performance:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
