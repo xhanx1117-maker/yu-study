@@ -6,7 +6,8 @@ import {protectedPapers,questionSketch,readRepair} from './audit-model.js';
 import {openZip} from './archive-zip.js';
 import {initial} from './model.js';
 
-const jobKey='link-audit:active',lastKey='link-audit:last',version=1;
+const jobKey='link-audit:active',lastKey='link-audit:last',version=2;
+const currentSketch=d=>d.sketchChecked&&d.sketchVersion===version;
 export const auditJob=()=>get('meta',jobKey);
 export const lastAudit=()=>get('meta',lastKey);
 const fields=['subject','exam','year','grade','form','round','date','agency','recruitmentYear','rank','cohort','schedule'];
@@ -37,7 +38,7 @@ export async function runAudit(control,report=()=>{}){
   if(!job){
     const stored=new Set(await transaction(['files'],'readonly',({files},read,done)=>read(files.getAllKeys(),done)));
     job={id:crypto.randomUUID(),cursor:0,read:0,reused:0,issues:0,updated:0,items:[...docs.values()].filter(d=>
-      d.auditStamp!==stamp(d)||d.auditError||!!d.fileMissing===stored.has(d.hash)||needsSketch(d.id)&&!d.sketchChecked).map(d=>[d.id,d.hash])};
+      d.auditStamp!==stamp(d)||d.auditError||!!d.fileMissing===stored.has(d.hash)||needsSketch(d.id)&&!currentSketch(d)).map(d=>[d.id,d.hash])};
     await transaction(['meta'],'readwrite',({meta},read)=>read(meta.get(jobKey),old=>{if(old)throw Error('다른 창에서 점검을 시작했습니다.');meta.put(job,jobKey)}));
   }
   let worker,pending=[],presence=new Map();
@@ -88,7 +89,7 @@ export async function runAudit(control,report=()=>{}){
               if(d.exam&&!s.examTypes.includes(d.exam))s.examTypes.push(d.exam);
             }
             if(row.sketch?.length)d.questionSketch=row.sketch;
-            if(row.checked)d.sketchChecked=true;
+            if(row.checked){d.sketchChecked=true;d.sketchVersion=version}
             if(d.auditIssue&&d.linkEvidence?.length&&d.linkEvidence.every(e=>e.kind===materialKind(d)))delete d.auditIssue;
             if(old!==JSON.stringify([d.type,...fields.map(k=>d[k])]))job.updated++;
           }
@@ -108,7 +109,7 @@ export async function runAudit(control,report=()=>{}){
       if(d&&d.hash===hash)try{
         if(!presence.get(hash)){row.missing=true;throw Error('기기에 원본 PDF가 없습니다.')}
         const name=d.filename||d.title||'',info=classifyExam(name,{},archive.examTypes);
-        row.info=info;const variant=needsSketch(id)&&!d.sketchChecked;
+        row.info=info;const variant=needsSketch(id)&&!currentSketch(d);
         if(variant||!d.questionSketch?.length&&(d.detected||d.externalRegions)){
           const map=d.externalRegions?await get('meta','auto-regions:'+id+':'+hash):null;
           row.sketch=questionSketch(Object.values({...map,...d.detected}).map(q=>q.text));row.checked=row.sketch.length>=3;

@@ -72,3 +72,11 @@ test('existing exam titles also resolve vocational, welfare and bar exam familie
     if(family==='행정사')assert.equal(d.schedule,'1차');
   }
 });
+
+test('question samples survive fragmented lines and a page break',async()=>{
+  const {questionSampler,questionSketch}=await import('../src/question-sketch.js');
+  const sampler=questionSampler(),first='가상의 도서관에서 열람실을 이용하는 절차를 사례에 비추어 설명하시오',second='가상의 박물관에서 보관 자료를 기록하는 방식에 관한 올바른 설명을 고르시오';
+  const a={str:'1. '+first.slice(0,12),x:.1,y:.13,n:1},b={str:'2. '+second,x:.1,y:.4,n:2};
+  sampler.addPage([a],[a]);sampler.addPage([{str:first.slice(12),x:.13,y:.07},b],[b]);
+  assert.deepEqual(sampler.finish(),questionSketch([first,second]));
+});

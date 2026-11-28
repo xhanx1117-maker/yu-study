@@ -1,4 +1,4 @@
-import {questionSketch} from './question-sketch.js';
+import {questionSampler} from './question-sketch.js';
 import {explanationMarkers} from './exam-catalog.js';
 import {examPixels,pageFrame,beforeLine,tightBand,regionVersion,repeatedPageEdges} from './exam-regions.js';
 const base=new URL('vendor/',document.baseURI);
@@ -40,26 +40,17 @@ export async function probePdf(data,worker,path='',signal,collectQuestions=false
     }
     let sketch=[];
     if(collectQuestions){
-      const hashes=new Set();
-      for(let n=1;n<=pdf.numPages&&hashes.size<300;n++){
+      const sampler=questionSampler();
+      for(let n=1;n<=pdf.numPages&&sampler.size<300;n++){
         signal?.throwIfAborted();
         let linesOnPage=lines;
         if(n!==1){
           const next=await pdf.getPage(n);
           try{linesOnPage=pageText(next.getViewport({scale:1}),await textContent(next))}finally{next.cleanup()}
         }
-        const markers=markerLines(linesOnPage,300),split=markers.some(l=>l.x<.28)&&markers.some(l=>l.x>.42&&l.x<.66);
-        for(const right of split?[false,true]:[false]){
-          const lane=linesOnPage.filter(l=>!split||(l.x>=.45)===right).sort((a,b)=>Math.abs(a.base-b.base)<Math.min(a.h,b.h)*.35?a.x-b.x:a.base-b.base);
-          let block='';
-          for(const l of lane){
-            if(markers.some(m=>m.x===l.x&&m.y===l.y)){for(const v of questionSketch([block]))hashes.add(v);block=l.str}
-            else if(block&&block.length<350)block+=' '+l.str;
-          }
-          for(const v of questionSketch([block]))hashes.add(v);
-        }
+        sampler.addPage(linesOnPage,markerLines(linesOnPage,300));
       }
-      sketch=[...hashes].sort((a,b)=>a-b);
+      sketch=sampler.finish();
     }
     const explicitCount=heading.match(/(?:총|전체)\s*(\d{1,3})\s*문항/);
     return {heading,sample,tailSample,questionSketch:sketch,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};

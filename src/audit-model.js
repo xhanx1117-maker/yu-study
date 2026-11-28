@@ -68,7 +68,7 @@ export function duplicateGroups(index,subject=''){
     const overlap=(as,bs)=>{const set=new Set(as);return bs.filter(v=>set.has(v)).length};
     let reason;
     if(Math.min(qa.length,qb.length)>=3){
-      const same=overlap(qa,qb);if(same>=3&&same>=Math.min(qa.length,qb.length)*.65)reason='문항 본문 '+same+'개 일치';
+      const same=overlap(qa,qb);if(same>=3&&same>=Math.min(qa.length,qb.length)*.65)reason='문항 앞부분 '+same+'개 일치';
     }else if(!cross&&Math.min(sa.length,sb.length)>=10&&overlap(sa,sb)>=Math.min(sa.length,sb.length)*.8)reason='첫 페이지 본문 유사';
     else if(!cross&&x.cohort&&x.cohort===y.cohort&&/발췌|변환|순수|통합|공식원본/.test((a.title||'')+' '+(b.title||'')))reason='같은 기수·판본 후보 · 본문 대조 필요';
     if(reason){seen.add(key);result.push({ids:[a.id,b.id],titles:[a.title,b.title],reason,booklets:[a.form||'',b.form||'']})}
