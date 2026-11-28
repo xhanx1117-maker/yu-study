@@ -1,5 +1,7 @@
 import {safePath} from './archive-zip.js';
 import {materialKind,mixedType} from './materials.js';
+import {manifestEvidence,roleKind} from './link-evidence.js';
+import {family,gradeOf,subjectName,booklet} from './exam-identity.js';
 import {subjects} from './model.js';
 
 const types=new Map(Object.entries({paper:'기출문제지',question:'기출문제지',문제지:'기출문제지',기출문제지:'기출문제지',
@@ -28,20 +30,32 @@ export function applyEntry(info,row,hash){
   if(row.issue)return warn(row.issue);
   const checksum=row.sha256??row.hash;
   if(checksum!=null&&(typeof checksum!=='string'||checksum.toLowerCase()!==hash))return warn('manifest 해시 불일치');
-  const type=types.get(row.type??row.materialType);
+  const evidence=manifestEvidence(row,hash);
+  if(evidence.length)info.linkEvidence=evidence;
+  const type=types.get(row.type??row.materialType)||(evidence.length?roleKind(row.role):'');
   if((row.type||row.materialType)&&!type)return warn('manifest 자료 유형 미확인');
   if(type){
-    if(info.typeEvidence&&materialKind(info)!==materialKind({type}))return warn('manifest 자료 유형 불일치');
+    if(info.typeEvidence&&materialKind(info)!==materialKind({type})&&!evidence.length)return warn('manifest 자료 유형 불일치');
     if(!info.typeEvidence&&!checksum)return warn('manifest 자료 유형 확인 필요');
-    if(info.type!==mixedType)info.type=type;
+    if(info.type!==mixedType||type==='정답지')info.type=type;
   }
+  if(evidence.length)row={...row,subject:subjectName(row.subject),form:booklet(row.booklet)||row.form,date:row.exam_date||row.date};
   for(const key of ['subject','year','exam','form','grade','rank','round','date','agency','recruitmentYear']){
     if(row[key]==null)continue;
     const value=String(row[key]).trim().normalize('NFC');
     if(!value||value.length>100||key==='subject'&&![...subjects,'통합'].includes(value)||
       ['year','recruitmentYear'].includes(key)&&!/^(19|20)\d\d$/.test(value)){warn('manifest '+key+' 검토');continue}
+    if(key==='subject'&&info.combined&&type==='정답지')continue;
+    if(key==='exam'&&info.exam&&family(info.exam)===family(value)&&(!gradeOf(info.exam)||!gradeOf(value)||gradeOf(info.exam)===gradeOf(value)))continue;
     if(info[key]&&info[key]!=='미분류'&&String(info[key])!==value){warn('manifest '+key+' 불일치');continue}
     info[key]=value;
+  }
+  if(evidence.length){
+    if(row.session)info.sitting=String(row.session).slice(0,100);
+    if(/비공식/.test(row.role))info.authority='비공식';
+    if(/최종/.test(row.role))info.answerEdition='최종';
+    else if(/가답안/.test(row.role))info.answerEdition='잠정';
+    else if(/미상|미확정/.test(row.role))info.answerEdition='';
   }
   if(info.type==='정답지'&&checksum){
     if(Array.isArray(row.forms)&&row.forms.every(v=>typeof v==='string'&&/^[가-힣A-Za-z0-9]{1,4}$/.test(v)))info.forms=[...new Set(row.forms)];

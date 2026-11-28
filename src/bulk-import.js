@@ -1,4 +1,6 @@
 import {get,state,transaction,entries,putMeta,digestBytes} from './db.js';
+import {manifestEvidence} from './link-evidence.js';
+import {applyProof,protectedPapers} from './audit-model.js';
 import {materialKind} from './materials.js';
 import {packageManifest,applyEntry} from './package-manifest.js';
 import {initial} from './model.js';
@@ -89,7 +91,7 @@ export async function preview(job,rows,sources,control,report,failedOnly=false){
         const file=await source.read(),buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
         if(!new TextDecoder().decode(bytes.subarray(0,1024)).includes('%PDF-'))throw Error('PDF 형식을 확인할 수 없습니다.');
         const hash=source.digest||await digestBytes(bytes);row.hash=hash;
-        if(known.has(hash)){Object.assign(row,{status:'duplicate',error:''});await storePreview(job,row)}
+        if(known.has(hash)){const claims=manifestEvidence(source.manifest,hash);if(claims.length)row.claims=claims;Object.assign(row,{status:'duplicate',error:''});await storePreview(job,row)}
         else{
           if(processed++%24===0){const estimate=await navigator.storage?.estimate?.().catch(()=>null);budget=estimate?.quota?estimate.quota-estimate.usage:Infinity}
           if(row.size>budget)throw new DOMException('예상 저장 공간 부족','QuotaExceededError');
@@ -118,18 +120,22 @@ export function summary(rows){
 }
 export async function register(job,rows,control,report){
   job.phase='register';await saveJob(job);
-  const pending=rows.filter(row=>row.status==='ready');
+  const pending=rows.filter(row=>row.status==='ready'||row.status==='duplicate'&&row.claims?.length&&!row.proofApplied);
   for(let i=0;i<pending.length&&!paused(control);i+=24){
     const batch=pending.slice(i,i+24),updates=[];
     await transaction(['meta','files'],'readwrite',({meta,files},read)=>read(meta.get(activeKey),live=>{
       if(live?.id!==job.id)throw Error('가져오기 작업이 바뀌었습니다.');
       read(meta.get('archive'),value=>{
-        const s=value||initial(),known=new Set(s.documents.map(d=>d.hash)),date=new Date().toISOString();
+        const s=value||initial(),known=new Map(s.documents.map(d=>[d.hash,d])),protectedIds=protectedPapers(s),date=new Date().toISOString();
         let changed=false;
         for(const row of batch)read(files.getKey(row.hash),exists=>{
           const result={...row};
           if(!exists){result.status='failed';result.error='보관한 파일을 다시 선택해 주세요.'}
-          else if(known.has(row.hash))result.status='duplicate';
+          else if(known.has(row.hash)){
+            result.status='duplicate';result.proofApplied=true;
+            const claims=row.claims||row.info?.linkEvidence;
+            if(claims?.length&&job.options.link&&applyProof(known.get(row.hash),claims,protectedIds))changed=true;
+          }
           else{
             const id=crypto.randomUUID(),session=crypto.randomUUID(),info={...row.info};
             if(!job.options.classify)Object.assign(info,{subject:'미분류',year:'',exam:'',reviewReasons:['수동 분류']});
@@ -137,7 +143,7 @@ export async function register(job,rows,control,report){
             s.documents.push({...info,id,session,hash:row.hash,size:row.size,created:date,favorite:false,autoLink:job.options.link,
               analysisState:analyze?'queued':'off',importId:job.id});
             s.sessions.push({id:session,doc:id,date});if(info.exam&&!s.examTypes.includes(info.exam))s.examTypes.push(info.exam);
-            result.status='registered';result.doc=id;known.add(row.hash);changed=true;
+            result.status='registered';result.doc=id;known.set(row.hash,s.documents.at(-1));changed=true;
           }
           updates.push([row,result]);meta.put(result,rowKey(job.id,row.i));
           if(updates.length===batch.length&&changed)meta.put(s,'archive');

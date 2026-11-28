@@ -109,6 +109,7 @@ export async function importMenu({refresh,restore,manual},initialFiles){
     const checkbox=(key,label)=>'<label><input type="checkbox" data-bulk-option="'+key+'" '+(opts[key]?'checked':'')+'> '+label+'</label>';
     const describe=m=>[...m].map(([k,v])=>k+' '+v+'개').join(' · ')||'—';
     const failures=rows.filter(r=>r.error),reviews=rows.filter(r=>r.info?.reviewReasons?.length&&['ready','registered'].includes(r.status)),missing=rows.some(r=>(r.status==='pending'||r.status==='failed')&&!sources.has(r.id));
+    const repairCount=rows.filter(r=>r.status==='duplicate'&&r.claims?.length&&!r.proofApplied).length;
     const count='발견 '+rows.length+'개 · 신규 '+s.ready+' · 등록 '+s.registered+' · 중복 '+s.duplicate+' · 실패 '+s.failed;
     show('<p id="bulk-counts">'+count+'</p><p>시험지 '+s.papers+' · 정답지 '+s.keys+' · 해설지 '+s.solutions+' · 분류 검토 '+s.review+' · 예상 신규 원본 '+mb(s.bytes)+'</p>'+
       '<p class="sub">'+esc(describe(s.subjects))+'<br>'+esc(describe(s.years))+'</p>'+
@@ -120,7 +121,7 @@ export async function importMenu({refresh,restore,manual},initialFiles){
       (failures.length||job.problems.length?'<details class="box"><summary>가져오기 오류</summary><ul>'+[...job.problems,...failures.map(r=>r.path+' · '+r.error)].slice(0,100).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></details>':'')+
       (docs.length?'<p id="scan-counts">문항 분석 완료 '+done+' · 대기 '+scanQueue.length+' · 직접 영역 확인 '+manual+' · 분석 오류 '+scanErrors.length+'</p>':'')+
       '<div class="row">'+(s.pending&&sources.size?btn('bulk-preview','미리보기 재개'):'')+
-      (s.ready?btn('bulk-register','일괄 등록 · '+s.ready+'개',true):'')+(s.failed&&sources.size?btn('bulk-retry','실패한 파일만 재시도'):'')+
+      (s.ready||repairCount?btn('bulk-register','일괄 등록 · '+s.ready+'개'+(repairCount?' / 기존 연결 정보 '+repairCount+'건':''),true):'')+(s.failed&&sources.size?btn('bulk-retry','실패한 파일만 재시도'):'')+
       (scanQueue.length||scanErrors.length?btn('bulk-analyse','문항 분석 재개'):'')+
       (s.registered?btn('bulk-library','자료실 열기'):'')+btn('bulk-finish',s.ready||s.pending?'이 가져오기 중단':'작업 마치기')+'</div>');
     bindInputs();

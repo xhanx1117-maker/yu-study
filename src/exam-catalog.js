@@ -1,3 +1,4 @@
+import {cadetPatterns,sitting,compact} from './exam-identity.js';
 import {subjects} from './model.js';
 import {materialIndex,mixedType} from './materials.js';
 
@@ -14,12 +15,13 @@ function extract(text,customExams){
   const recruitmentYear=flat.match(/(?:선발|채용)연도[:：_-]*((?:19|20)\d{2})|((?:19|20)\d{2})년(?:도)?(?:선발|채용)/);
   const actualYear=flat.match(/(?:시행|시험)연도[:：_-]*((?:19|20)\d{2})/);
   const rank=flat.match(/총경|경정|경감|경위|경사|경장|순경|소방경|소방위|소방장|소방교|소방사/);
-  const kind=exams.filter(([,pattern])=>pattern.test(flat)).map(([name])=>name);
+  const specific=cadetPatterns.find(([,re])=>re.test(compact(text)))?.[0];
+  const kind=specific?[specific]:exams.filter(([,pattern])=>pattern.test(flat)).map(([name])=>name);
   const custom=customExams.filter(name=>flat.includes(name.normalize('NFC').replace(/\s+/g,'')));
-  if(custom.length)kind.push(...custom);
+  if(custom.length)kind.push(...custom.filter(name=>!specific||name===specific));
   const foundSubjects=subjects.filter(subject=>flat.includes(subject));
-  const form=flat.match(/(?:책형|문제형|책자형별|형별)[:：_(-]*([가나다라마바사아A-F])(?:형|\b|$|[)\s])/i)
-    ||text.match(/(?:^|[-_ (\s])([가나다라마바사아A-F])\s*(?:책?형|책|(?=[_. )/]|$))/i);
+  const form=flat.match(/(?:책형|문제형|책자형별|형별)[:：_(-]*([가나다라마바사아자차카타파하A-Z])(?:형|\b|$|[)\s])/i)
+    ||text.match(/(?:^|[-_ (\s])([가나다라마바사아자차카타파하A-Z])\s*(?:책?형|책|(?=[_. )/]|$))/i);
   const answer=/정답(?:지|표|안|가안|및해설)?|답안(?:지|표)|answer[\s_-]*key/i.test(flat);
   return {subjects:foundSubjects,years:date?[date[1]]:actualYear?[actualYear[1]]:unique(flat.replace(recruitmentYear?.[0]||'\0','').match(/(?:19|20)\d{2}/g)||[]),recruitmentYear:recruitmentYear?.[1]||recruitmentYear?.[2]||'',rank:rank?.[0]||'',exams:kind,grades:unique(flat.match(/[1-9]급/g)||[]),
     date:date?[date[1],date[2].padStart(2,'0'),date[3].padStart(2,'0')].join('-'):'',
@@ -72,9 +74,10 @@ export function classifyExam(path,{heading='',sample='',tailSample='',pages=0,sc
   const form=resolve('form','책형'),round=resolve('round','회차'),date=resolve('date','시행일'),agency=resolve('agency','기관');
   if(parts[0].answer&&parts[1].explicitPaper&&!parts[1].answer || parts[1].answer&&parts[0].explicitPaper&&!parts[0].answer)reasons.push('문제지·정답지 불일치');
   if(!exam||!year||subject==='미분류')reasons.push('분류 정보 부족');
+  const context=sitting(title+' '+heading+' '+normalized.split('/').slice(0,-1).join(' '));
   if(scanned)reasons.push('텍스트 없는 PDF');
   const recruitmentYear=resolve('recruitmentYear','선발연도'),rank=resolve('rank','계급');
-  return {title,filename,subject,exam,grade,year,form,round,date,agency,recruitmentYear,rank,type,typeEvidence:!!(hasNotes||evidence.length||folder),combined,authority:isAnswer?(/비공식|강사|복원/.test(names.join(' '))?'비공식':/공식|인사혁신처|국방부|법원행정처|국회사무처/.test(names.join(' '))?'공식':''):'',
+  return {title,filename,subject,exam,grade,year,form,round,date,agency,recruitmentYear,rank,cohort:context.cohort,schedule:context.schedule,type,typeEvidence:!!(hasNotes||evidence.length||folder),combined,authority:isAnswer?(/비공식|강사|복원/.test(names.join(' '))?'비공식':/공식|인사혁신처|국방부|법원행정처|국회사무처/.test(names.join(' '))?'공식':''):'',
     answerSubjects:combined?possible:[],answerEdition:isAnswer?resolve('edition','정답 판본'):'',pages,
     count:explicitCount||20,countKnown:!!explicitCount,signature:fingerprint(sample),reviewReasons:unique(reasons)};
 }
