@@ -35,8 +35,9 @@ export async function runAudit(control,report=()=>{}){
   }
   const needsSketch=id=>paperScopes.has(id)&&(/통합|발췌|변환/.test(docs.get(id)?.title||'')||(paperScopes.get(id)||[]).some(k=>scopeCounts.get(k)>1));
   if(!job){
+    const stored=new Set(await transaction(['files'],'readonly',({files},read,done)=>read(files.getAllKeys(),done)));
     job={id:crypto.randomUUID(),cursor:0,read:0,reused:0,issues:0,updated:0,items:[...docs.values()].filter(d=>
-      d.auditStamp!==stamp(d)||d.auditError||needsSketch(d.id)&&!d.sketchChecked).map(d=>[d.id,d.hash])};
+      d.auditStamp!==stamp(d)||d.auditError||!!d.fileMissing===stored.has(d.hash)||needsSketch(d.id)&&!d.sketchChecked).map(d=>[d.id,d.hash])};
     await transaction(['meta'],'readwrite',({meta},read)=>read(meta.get(jobKey),old=>{if(old)throw Error('다른 창에서 점검을 시작했습니다.');meta.put(job,jobKey)}));
   }
   let worker,pending=[],presence=new Map();
@@ -65,6 +66,13 @@ export async function runAudit(control,report=()=>{}){
             const old=JSON.stringify([d.type,...fields.map(k=>d[k])]);
             const info=row.info;
             if(info&&!d.classificationLocked){
+              if(protectedIds.has(d.id)&&info.subject!=='미분류'&&info.subject!==d.subject&&(!d.subject||d.subject==='미분류'))d.auditIssue='과목 후보 '+info.subject+' · 연결된 학습 기록을 자료 관리에서 확인하세요.';
+              if(row.read&&d.reviewReasons){
+                const refreshed=['시험 불일치','연도 불일치','급수 불일치','과목 불일치','자료 유형 불일치','문제지·정답지 불일치'];
+                const agrees=(!d.year||!info.year||String(d.year)===String(info.year))&&(!d.exam||identity(d).exam===identity(info).exam)&&
+                  (!d.subject||d.subject==='미분류'||subjectName(d.subject)===subjectName(info.subject))&&materialKind(d)===materialKind(info);
+                if(agrees)d.reviewReasons=d.reviewReasons.filter(r=>!refreshed.includes(r)||info.reviewReasons.includes(r));
+              }
               for(const key of fields){
                 const v=info[key];
                 if(!v||v==='미분류'||key==='subject'&&protectedIds.has(d.id))continue;
@@ -101,12 +109,12 @@ export async function runAudit(control,report=()=>{}){
         if(!presence.get(hash)){row.missing=true;throw Error('기기에 원본 PDF가 없습니다.')}
         const name=d.filename||d.title||'',info=classifyExam(name,{},archive.examTypes);
         row.info=info;const variant=needsSketch(id)&&!d.sketchChecked;
-        if(variant||!d.questionSketch?.length&&d.detected){
+        if(variant||!d.questionSketch?.length&&(d.detected||d.externalRegions)){
           const map=d.externalRegions?await get('meta','auto-regions:'+id+':'+hash):null;
           row.sketch=questionSketch(Object.values({...map,...d.detected}).map(q=>q.text));row.checked=row.sketch.length>=3;
         }
         const incomplete=!d.classificationLocked&&!d.linkEvidence?.length&&(!d.exam&&!info.exam||!d.year&&!info.year||
-          (!d.subject||d.subject==='미분류')&&info.subject==='미분류'||d.reviewReasons?.some(r=>/자료 유형|문제지·정답지/.test(r)));
+          (!d.subject||d.subject==='미분류')&&info.subject==='미분류'||d.reviewReasons?.some(r=>/자료 유형|문제지·정답지|^(시험|연도|과목|급수) 불일치/.test(r)));
         if(incomplete||variant&&!row.checked){
           const blob=await get('files',hash);if(!blob)throw Error('기기에 원본 PDF가 없습니다.');
           const pdf=await import('./pdf.js');worker??=await pdf.batchWorker();row.read=true;

@@ -1,4 +1,4 @@
-import {cadetPatterns,sitting,compact} from './exam-identity.js';
+import {specificExams,sitting,compact} from './exam-identity.js';
 import {subjects} from './model.js';
 import {materialIndex,mixedType} from './materials.js';
 
@@ -15,7 +15,7 @@ function extract(text,customExams){
   const recruitmentYear=flat.match(/(?:선발|채용)연도[:：_-]*((?:19|20)\d{2})|((?:19|20)\d{2})년(?:도)?(?:선발|채용)/);
   const actualYear=flat.match(/(?:시행|시험)연도[:：_-]*((?:19|20)\d{2})/);
   const rank=flat.match(/총경|경정|경감|경위|경사|경장|순경|소방경|소방위|소방장|소방교|소방사/);
-  const specific=cadetPatterns.find(([,re])=>re.test(compact(text)))?.[0];
+  const specific=specificExams.find(([,re])=>re.test(compact(text)))?.[0];
   const kind=specific?[specific]:exams.filter(([,pattern])=>pattern.test(flat)).map(([name])=>name);
   const custom=customExams.filter(name=>flat.includes(name.normalize('NFC').replace(/\s+/g,'')));
   if(custom.length)kind.push(...custom.filter(name=>!specific||name===specific));

@@ -24,7 +24,7 @@ export async function showAudit(index,subject,refresh,focusId=''){
     const page=review.slice(offset,offset+15),choices=[];
     function item(r){
       return '<article class="box"><strong>'+esc(r.제목)+'</strong>'+roles.map(([kind,field])=>{
-        const st=r[kind];if(!['후보 검토','판정 보류'].includes(st.상태))return '';
+        const st=r[kind];if(!['후보 검토','판정 보류'].includes(st.상태))return st.사유.startsWith('직접 지정한 자료')?'<p>'+kind+' · '+esc(st.사유)+'</p>':'';
         return '<p>'+kind+' · '+esc(st.상태)+' · '+esc(st.사유)+'</p>'+st.후보.map(c=>{
           const v={paper:r.문제지ID,field,id:c.id},i=choices.push(v)-1;
           return '<label class="audit-pick"><input type="checkbox" data-proof-pick="'+i+'" '+(selected.has(key(v))?'checked ':'')+(c.선택가능?'':'disabled')+'> '+esc(c.제목)+'<small>'+esc(c.사유)+'</small></label>';

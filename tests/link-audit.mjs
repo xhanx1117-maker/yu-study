@@ -66,3 +66,9 @@ test('protect study and user-selected types while still reporting a misclassifie
   const lockedSolution={...k,id:'locked',hash:h(19),classificationLocked:true};s.documents.push(lockedSolution);
   attachRepair(s,readRepair({files:[row(p,lockedSolution,true)]}));assert.equal(lockedSolution.type,'문제지');
 });
+test('existing exam titles also resolve vocational, welfare and bar exam families',()=>{
+  for(const [name,family] of [['법원행정고등고시','법원행정고등고시'],['변호사시험','변호사시험'],['사회복지직9급','사회복지직'],['행정사1차','행정사']]){
+    const d=classifyExam(('2017_'+name+'_행정법_문제.pdf').normalize('NFD'));assert.equal(d.exam,family);
+    if(family==='행정사')assert.equal(d.schedule,'1차');
+  }
+});

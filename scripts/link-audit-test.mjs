@@ -103,10 +103,14 @@ try{
   await p.locator('#bulk-register').click();await p.waitForFunction(()=>document.querySelector('#bulk-counts')?.textContent.includes('등록 1'));
   const merged=await p.evaluate(async({newPapers,digest})=>{
     const db=await import('/proof-src/db.js'),{materialIndex}=await import('/proof-src/materials.js');
-    await db.change(s=>{for(const {bytes,...d} of newPapers)s.documents.push(d)},newPapers.map(d=>[d.hash,new Blob([new Uint8Array(d.bytes)])]));
+    const {savePdf}=await import('/proof-src/import-pdf.js'),futureIds=[];
+    for(const {bytes,...doc} of newPapers){
+      const file=new File([new Uint8Array(bytes)],doc.title+'.pdf',{type:'application/pdf'});
+      const id=await savePdf(file,doc,{signal:new AbortController().signal,onProgress:()=>{}});futureIds.push(id);
+    }
     const s=await db.state(),matching=s.documents.filter(d=>d.hash===digest),ix=materialIndex(s.documents);
-    return {files:matching.length,edges:matching[0].linkEvidence.length,parents:ix.parents.get(matching[0].id)?.map(d=>d.id)};
+    return {files:matching.length,edges:matching[0].linkEvidence.length,parents:ix.parents.get(matching[0].id)?.map(d=>d.id),futureIds};
   },{newPapers,digest});
-  assert.equal(merged.files,1);assert.equal(merged.edges,2);assert.deepEqual(merged.parents,['future-0','future-1']);
+  assert.equal(merged.files,1);assert.equal(merged.edges,2);assert.deepEqual(merged.parents,merged.futureIds);
   assert.deepEqual(errors,[]);console.log((tablet?'WebKit touch':'Chromium')+' · hash repair, both subjects, manual batch, mismatch, orphan export, resumed/cached audit and unchanged source keys + study records passed.');
 }finally{await browser.close();server.close()}
