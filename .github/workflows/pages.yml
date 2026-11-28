@@ -106,6 +106,8 @@ jobs:
         run: |
           node scripts/study-test.mjs
           YU_TEST_ENGINE=webkit node scripts/study-test.mjs
+          node scripts/motion-test.mjs
+          YU_TEST_ENGINE=webkit node scripts/motion-test.mjs
         env:
           YU_BROWSER: /usr/bin/google-chrome
       - name: Validate existing archive repair and resumable inspections in Chromium and tablet WebKit
@@ -141,6 +143,10 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --ignore-scripts && npm run build
+      - name: Measure daily history, route memory and interaction frames for up to 3000 papers
+        run: node scripts/study-bench.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
       - name: Measure metadata and mixed PDF collections up to 3000 originals
         run: node scripts/companion-bench.mjs
         env:

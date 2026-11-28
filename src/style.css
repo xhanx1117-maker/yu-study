@@ -62,3 +62,28 @@ button.brand{background:transparent;border:0;border-radius:6px;padding:0;justify
 .study-entry{display:flex;align-items:center;gap:.6rem;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid #365746;padding:.6rem 0}
 .study-entry small{display:block;color:#bbcebf}.study-correction{flex-basis:100%}
 #study-preview textarea{width:100%;min-height:13rem}#study-feedback:empty{display:none}
+
+:root{--motion-time:145ms;--motion-ease:cubic-bezier(.2,.65,.25,1);--control-edge:#7b9f85}
+:where(button,summary,label.btn){transition:transform var(--motion-time) var(--motion-ease),border-color var(--motion-time),background-color var(--motion-time)}
+:where(button,summary):focus-visible,.file-picker:has(input:focus-visible){outline:2px solid #c7e5ad;outline-offset:3px}
+button:disabled{cursor:default}
+@media (any-hover:hover) and (any-pointer:fine){
+  html:not([data-pointer=touch]) :is(button:not(:disabled,[aria-disabled=true]),summary,label.btn:not(:has(input:disabled))):hover{transform:translateY(-1px);border-color:var(--control-edge)}
+  html:not([data-pointer=touch]) :is(button:not(:disabled,[aria-disabled=true]),summary,label.btn:not(:has(input:disabled))):active{transform:translateY(0);border-color:#a7c5a5}
+}
+:is(button,summary,label.btn)[data-pressed]{transform:translateY(-1.5px);border-color:var(--control-edge);transition-duration:60ms}
+button.primary[data-pressed],nav button[aria-current][data-pressed],.subject-tabs button[aria-pressed=true][data-pressed]{background-color:#c6e2bc}
+@keyframes yu-enter{from{opacity:.72;transform:translateY(2px)}to{opacity:1;transform:none}}
+.enter-view{animation:yu-enter var(--motion-time) var(--motion-ease)}
+dialog[open] .modal-panel{animation:yu-enter var(--motion-time) var(--motion-ease)}
+@supports (transition-behavior:allow-discrete){
+  dialog{transition:display var(--motion-time) allow-discrete,overlay var(--motion-time) allow-discrete}
+  dialog .modal-panel,dialog .modal-backdrop{opacity:0;transition:opacity var(--motion-time) var(--motion-ease)}
+  dialog[open] .modal-panel,dialog[open] .modal-backdrop{opacity:1;animation:none}
+  dialog:not([open]){pointer-events:none}
+  @starting-style{dialog[open] .modal-panel,dialog[open] .modal-backdrop{opacity:0}}
+}
+@media (prefers-reduced-motion:reduce){
+  :is(button,summary,label.btn,dialog,.modal-panel,.modal-backdrop,.enter-view){transition:none!important;animation:none!important}
+  :is(button,summary,label.btn){transform:none!important}
+}

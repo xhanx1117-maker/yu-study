@@ -1,3 +1,4 @@
+import {bindPress,enterView} from './motion.js';
 import {recentViews,recentGroups,clearRecent} from './reader-memory.js';
 import {linkEditor} from './link-editor.js';
 import {navigation} from './navigation.js';
@@ -15,6 +16,8 @@ import {changeDocumentSubject,notebookIndex,groupCounts,totals} from './notebook
 import {reader} from './reader.js';
 const menus=['홈','자료실','오답노트','취약 영역','설정'],app=$('#app');
 let section='홈',revision=0,cleanup,readerAbort,readerRoute=null,restoreDetail=null;
+window.addEventListener('yu-storage-progress',e=>{const loading=document.querySelector('#app > [data-loading]');if(loading)loading.textContent=e.detail});
+bindPress();
 const nav=$('nav');nav.innerHTML=menus.map((m,i)=>'<button data-menu="'+i+'">'+m+'</button>').join('');
 const openSettings=()=>[...app.querySelectorAll('details[data-settings-panel][open]')].map(panel=>panel.dataset.settingsPanel);
 const router=navigation(()=>({section,settings:section==='설정'?openSettings():[],reader:readerRoute&&{...readerRoute},library:librarySnapshot(),notebook:notebookSnapshot(),y:window.scrollY}),async view=>{
@@ -35,11 +38,11 @@ $('#brand-home').onclick=guard(()=>root('홈'));
 const uid=()=>crypto.randomUUID(),allThemes=s=>themes({schemaVersion:1,books:s.books});
 const header=(name,buttons='')=>'<div class="toolbar"><h1>'+name+'</h1><div class="row">'+buttons+'</div></div>';
 function empty(msg){return '<p class="empty">'+msg+'</p>'}
-async function show(name=section,id,number,position={}){section=name;readerRoute=id?{id,number,...position}:null;app.ondrop=app.ondragover=null;const turn=++revision;readerAbort?.abort();readerAbort=null;const closing=cleanup?.();cleanup=null;nav.querySelectorAll('button').forEach((b,i)=>{if(menus[i]===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});if(!app.firstChild)app.innerHTML='<p>자료를 불러오는 중…</p>';const [s]=await Promise.all([state(),closing]);if(turn!==revision)return;const docs=s.documents.filter(d=>!d.deleted);
+async function show(name=section,id,number,position={}){const moved=name!==section||(id||null)!==(readerRoute?.id||null);section=name;readerRoute=id?{id,number,...position}:null;app.ondrop=app.ondragover=null;const turn=++revision;readerAbort?.abort();readerAbort=null;const closing=cleanup?.();cleanup=null;nav.querySelectorAll('button').forEach((b,i)=>{if(menus[i]===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});if(!app.firstChild)app.innerHTML='<p data-loading role="status">자료를 불러오는 중…</p>';const [s]=await Promise.all([state(),closing]);if(turn!==revision)return;const docs=s.documents.filter(d=>!d.deleted);
  if(id){
    try{
      readerAbort=new AbortController();const end=await reader(id,()=>turn===revision,number,s,(next,anchor)=>show('자료실',next,number,{anchor,resume:true}),{...position,signal:readerAbort.signal,back:()=>router.back()||root('자료실')});
-     if(turn===revision)cleanup=end;else end?.();
+     if(turn===revision){cleanup=end;if(moved)enterView(app)}else end?.();
    }catch(error){
      if(turn===revision){
        await show('자료실');
@@ -74,9 +77,9 @@ async function show(name=section,id,number,position={}){section=name;readerRoute
    app.ondrop=app.ondragover=null;
    const detail=restoreDetail;restoreDetail=null;
    cleanup=mountNotebook(app,s,{detail,checkpoint:router.step,back:()=>{if(!router.back())return root('오답노트')},refresh:()=>show('오답노트'),openOriginal:(doc,n,anchor,page)=>openReader(doc,anchor,n,page)});
-   return;
+   if(moved)enterView(app);return;
  }
- if(turn!==revision)return;
+ if(turn!==revision)return;if(moved)enterView(app);
  on('pdf-files',e=>{
    const files=[...e.target.files];
    if(files.length>1||/\.zip$/i.test(files[0]?.name||'')){e.target.value='';return openImport(files)}
