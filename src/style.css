@@ -56,3 +56,4 @@ input[type=checkbox]{width:19px;height:19px;min-height:0;padding:0;accent-color:
 #empty-library-trash{margin-left:auto}.visually-absent{display:none}.settings-credit{text-align:right;color:#fff;font-size:.75rem;margin:28px 0 max(8px,env(safe-area-inset-bottom))}
 button.brand{background:transparent;border:0;border-radius:6px;padding:0;justify-content:flex-start;min-height:44px;text-align:left}.workspace-tabs{margin:0 0 14px}
 
+.audit-pick{display:block;margin-block:.4rem}.audit-pick small,#audit-review article small{display:block;margin-inline-start:1.6rem}

@@ -24,7 +24,7 @@ export function manifestEvidence(row,hash){
     const reason=short(t.validation||row.validation,320);
     out.push({paper,kind,subject:sub,exam:family(targetExam),grade:gradeOf(row.grade||targetExam),year:/^(19|20)\d{2}$/.test(year)?year:'',
       form,sourceForm,...scope,role:short(row.role),allow:!crossed&&row.auto_link_allowed===true&&t.auto_link_allowed===true,
-      reason:crossed||reason||'수집 목록에서 대상 시험지 지정'});
+      ...(crossed?{blocked:crossed}:{}),reason:crossed||reason||'수집 목록에서 대상 시험지 지정'});
   }
   return out;
 }
@@ -33,7 +33,7 @@ export function mergeEvidence(a=[],b=[]){
   for(const e of [...a,...b]){
     const key=JSON.stringify([e.paper,e.kind,e.subject,e.exam,e.grade,e.year,e.form,e.sourceForm,e.cohort,e.schedule,e.recruitmentYear]);
     const prev=map.get(key);
-    if(!prev||prev.allow&&!e.allow)map.set(key,e);
+    if(!prev||prev.allow&&!e.allow||e.blocked&&!prev.blocked)map.set(key,e);
   }return [...map.values()];
 }
 export function evidenceConflict(paper,id,e){

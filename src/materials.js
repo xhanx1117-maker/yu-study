@@ -51,14 +51,15 @@ export function materialIndex(documents){
   for(const d of documents){
     if(d.deleted)continue;
     byId.set(d.id,d);const id=identity(d),kind=materialKind(d);ids.set(d.id,id);
+    for(const e of d.linkEvidence||[]){
+      append(proofs,e.paper,{d,e});
+      if(e.kind===kind)for(const t of timeKeys(e))append(claimedScopes,scope(e.subject,e.exam,t,kind),{d,e});
+    }
     if(kind==='문제지'){
       for(const t of timeKeys(id))append(papers,scope(id.subject,id.exam,t,id.forms[0]||''),d);
       continue;
     }
     if(!['정답지','해설지'].includes(kind))continue;
-    for(const e of d.linkEvidence||[])if(e.kind===kind){
-      append(proofs,e.paper,{d,e});for(const t of timeKeys(e))append(claimedScopes,scope(e.subject,e.exam,t,kind),{d,e});
-    }
     if(d.linkEvidence?.length)continue;
     const subs=subjects.filter(sub=>coversSubject(d,sub));
     if(!id.exam||!timeKeys(id).length||!subs.length){
@@ -72,7 +73,7 @@ export function materialIndex(documents){
     groups.set(p.id,group);
     for(const [kind,field,choice] of roles){
       const manual=p[choice]??(kind==='정답지'&&p.answerId?[p.answerId]:undefined);
-      const candidates=new Map(),verified=new Set(),exact=[];
+      const candidates=new Map(),verified=new Set(),exact=[],excluded=new Map();
       function candidate(d,reason,ok=true){
         const prev=candidates.get(d.id);
         if(!prev||!ok)candidates.set(d.id,{id:d.id,reason,selectable:ok});
@@ -86,7 +87,7 @@ export function materialIndex(documents){
         if(e.kind!==kind)continue;
         const metadata=ids.get(d.id);
         const locked=d.classificationLocked&&(conflict(a,metadata)||!coversSubject({...d,linkEvidence:[]},a.subject)&&'수동 지정 과목 불일치');
-        const mismatch=d.fileMissing&&'기기에서 PDF 원본을 찾을 수 없음'||locked||evidenceConflict(p,a,e)||((d.classificationLocked||!d.combined)&&ids.get(d.id).forms.length&&a.forms.length&&
+        const mismatch=materialKind(d)!==kind&&'수집 목록과 현재 자료 유형 불일치'||e.blocked||d.fileMissing&&'기기에서 PDF 원본을 찾을 수 없음'||locked||evidenceConflict(p,a,e)||((d.classificationLocked||!d.combined)&&ids.get(d.id).forms.length&&a.forms.length&&
           !a.forms.some(v=>ids.get(d.id).forms.includes(v))?'등록 자료 책형 불일치':'');
         candidate(d,mismatch||e.reason,!mismatch&&d.autoLink!==false);
         if(mismatch||!e.allow||d.autoLink===false)verified.delete(d);
@@ -103,7 +104,8 @@ export function materialIndex(documents){
       const possible=new Set(times.flatMap(t=>broad.get(scope(a.subject,a.exam,t,kind))||[]));
       for(const d of possible){
         const b=ids.get(d.id),mismatch=conflict(a,b);
-        if(mismatch||count(p)&&count(d)&&count(p)!==count(d))continue;
+        const difference=mismatch||(count(p)&&count(d)&&count(p)!==count(d)?'문항 수 불일치':'');
+        if(difference){excluded.set(difference,(excluded.get(difference)||0)+1);continue}
         const reason=d.fileMissing?'기기에서 PDF 원본을 찾을 수 없음':d.manifestHeld?'수집 목록에서 수동 검증 지정':d.autoLink===false?'자료 자동 연결 해제':!a.exam||!a.year?'시험 식별 정보 부족':
           missingDimension(a,b)||(kind==='정답지'||a.forms.length||b.forms.length)&&(!a.forms.length||!b.forms.length)&&'책형 대조 필요'||
           blocking(d)||blocking(p)||(ambiguousPeer()?'같은 시험의 문제지 판본 여러 개':'');
@@ -117,6 +119,8 @@ export function materialIndex(documents){
         state=group[field].length?'연결 완료':manual.length?'판정 보류':'연결 해제';
         reason=manual.length!==group[field].length?'직접 지정한 자료 누락 또는 유형 변경':'사용자 직접 지정';
         if(manual.length!==group[field].length)group.review=true;
+        const mismatch=group[field].map(d=>conflict(a,ids.get(d.id))).find(Boolean);
+        if(mismatch){group.review=true;reason='직접 지정한 자료 · '+mismatch}
       }else if(p.autoLink===false){state='연결 해제';reason='문제지 자동 연결 해제'}
       else if(options.length&&(kind==='해설지'||options.length===1||priority(options[0])>priority(options[1]))){
         group[field]=options;state='연결 완료';reason=direct.length?'원본 해시와 대조표 검증 일치':'시험 식별 정보와 책형 일치';
@@ -127,7 +131,7 @@ export function materialIndex(documents){
           const b=ids.get(d.id);return !conflict(a,b);
         });
         state=uncertain?'판정 보류':'기기 내 후보 없음';
-        reason=uncertain?'시험·과목·연도 정보가 부족한 자료가 있습니다.':'등록 자료에서 이 시험과 일치하는 후보를 찾지 못했습니다.';
+        reason=uncertain?'시험·과목·연도 정보가 부족한 자료가 있습니다.':excluded.size?[...excluded].map(([why,n])=>why+' '+n+'개').join(' · '):'등록 자료에서 이 시험과 일치하는 후보를 찾지 못했습니다.';
       }
       const items=Array.from(candidates.values());
       if(state==='후보 검토'||state==='판정 보류')group.review=true;

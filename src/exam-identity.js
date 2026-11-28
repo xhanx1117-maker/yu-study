@@ -11,9 +11,10 @@ export function booklet(value){
   return /^[가나다라마바사아자차카타파하A-Z0-9]{1,2}$/.test(s)?s:'';
 }
 export function sitting(text){
-  const s=compact(text);
+  const raw=String(text??'').normalize('NFKC'),s=compact(raw);
+  const slot=raw.match(/(?:^|[\s_(/-])(추가|(?:제\s*)?\d{1,2}차|(?:1[0-2]|[1-9])월)(?=$|[\s_)./-])/);
   return {cohort:s.match(/(?:제)?(\d{1,3})기(?:[^출]|$)/)?.[1]||'',
-    schedule:s.match(/추가(?:채용|시험|모집)|추가공채|재시험|상반기|하반기|(?:1[0-2]|[1-9])월(?:시행|시험|공채)/)?.[0]?.replace(/^추가.*/,'추가')||(/정규/.test(s)?'정규':''),
+    schedule:s.match(/추가(?:채용|시험|모집)|추가공채|재시험|상반기|하반기|(?:1[0-2]|[1-9])월(?:시행|시험|공채)/)?.[0]?.replace(/^추가.*/,'추가')||compact(slot?.[1]).replace(/^제/,'')||(/정규/.test(s)?'정규':''),
     recruitmentYear:s.match(/((?:19|20)\d{2})년(?:도)?(?:선발|채용)/)?.[1]||''};
 }
 export function identity(d){
@@ -26,7 +27,7 @@ export function identity(d){
     recruitmentYear:String(d.recruitmentYear||info.recruitmentYear),date:String(d.date||''),agency:compact(d.agency),rank:exam==='경찰간부'&&compact(d.rank)==='경위'?'':compact(d.rank),
     forms:[...new Set([d.form,...(Array.isArray(d.forms)?d.forms:[])].map(booklet).filter(Boolean))]};
 }
-export const timeKeys=i=>[i.year&&'y'+i.year,i.cohort&&'c'+i.cohort,i.recruitmentYear&&'y'+i.recruitmentYear].filter(Boolean);
+export const timeKeys=i=>[...new Set([i.year&&'y'+i.year,i.cohort&&'c'+i.cohort,i.recruitmentYear&&'y'+i.recruitmentYear].filter(Boolean))];
 export function conflict(a,b){
   for(const [field,label] of [['exam','시험'],['grade','급수'],['cohort','기수'],['round','회차'],['date','시행일'],['rank','계급'],['agency','기관'],['recruitmentYear','선발연도'],['schedule','채용 구분']]){
     if(a[field]&&b[field]&&a[field]!==b[field])return label+' 불일치';

@@ -29,6 +29,9 @@ export function validate(s){if(s?.version!==1)throw Error('지원하지 않는 �
  for(const k of ['documents','questions','events','sessions','reviews','books']){if(!Array.isArray(s[k])||new Set(s[k].map(x=>x.id)).size!==s[k].length||s[k].some(x=>!x.id))throw Error('백업 ID 오류')}
  if(!Array.isArray(s.examTypes)||s.examTypes.some(x=>typeof x!=='string'))throw Error('시험 종류 오류');
  const ts=new Set(themes({schemaVersion:1,books:s.books}).map(t=>t.id));
+ for(const d of s.documents)if(d.linkEvidence!==undefined&&(!Array.isArray(d.linkEvidence)||d.linkEvidence.some(e=>
+   !e||!/^[a-f0-9]{64}$/.test(e.paper)||!subjects.includes(e.subject)||!['정답지','해설지'].includes(e.kind)||typeof e.allow!=='boolean'||
+   ['exam','grade','year','form','sourceForm','cohort','schedule','recruitmentYear','role','reason'].some(k=>typeof e[k]!=='string'))))throw Error('자료 연결 정보 형식 오류');
  const docs=new Map(s.documents.map(d=>[d.id,d])),qs=new Map(s.questions.map(q=>[q.id,q])),sessions=new Map(s.sessions.map(a=>[a.id,a.doc]));
  const doc=id=>docs.get(id),q=id=>qs.get(id);
  for(const d of s.documents)if(!/^[a-f0-9]{64}$/.test(d.hash)||!Number.isInteger(d.count)||d.count<1||d.count>300)throw Error('자료 정보 오류');

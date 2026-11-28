@@ -55,28 +55,42 @@ export function attachRepair(s,claims){
 }
 export {questionSketch} from './question-sketch.js';
 export function duplicateGroups(index,subject=''){
-  const lists=new Map(),seen=new Set(),result=[];
-  function put(key,d){if(!lists.has(key))lists.set(key,[]);lists.get(key).push(d)}
-  for(const {paper:d} of index.groups.values()){
-    const i=index.identities.get(d.id);if(!i.exam)continue;
-    const scope=i.exam+'|';if(i.year)put(scope+'y'+i.year,d);if(i.cohort)put(scope+'c'+i.cohort,d);
-  }
-  for(const list of lists.values())for(let n=0;n<list.length;n++)for(let m=0;m<n;m++){
-    const a=list[m],b=list[n],key=JSON.stringify([a.id,b.id].sort());if(seen.has(key))continue;seen.add(key);
+  const scopes=new Map(),seen=new Set(),result=[];
+  const coset=(d,scope)=>JSON.stringify([scope,d.grade,d.round,d.cohort,d.date,d.schedule,d.rank]);
+  function compare(a,b){
+    const key=JSON.stringify([a.id,b.id].sort());if(seen.has(key))return;
     const x=index.identities.get(a.id),y=index.identities.get(b.id);
-    if(subject&&x.subject!==subject&&y.subject!==subject)continue;
+    if(subject&&x.subject!==subject&&y.subject!==subject)return;
     const integrated=d=>!subjects.includes(d.subject)||/통합|발췌/.test(d.title||'');
     const cross=x.subject!==y.subject;
-    if(cross&&!(integrated(a)||integrated(b))||conflict({...x,forms:[]},{...y,forms:[]}))continue;
+    if(cross&&!(integrated(a)||integrated(b))||conflict({...x,forms:[]},{...y,forms:[]}))return;
     const qa=a.questionSketch||[],qb=b.questionSketch||[],sa=a.signature||[],sb=b.signature||[];
     const overlap=(as,bs)=>{const set=new Set(as);return bs.filter(v=>set.has(v)).length};
     let reason;
     if(Math.min(qa.length,qb.length)>=3){
       const same=overlap(qa,qb);if(same>=3&&same>=Math.min(qa.length,qb.length)*.65)reason='문항 본문 '+same+'개 일치';
-      else continue;
     }else if(!cross&&Math.min(sa.length,sb.length)>=10&&overlap(sa,sb)>=Math.min(sa.length,sb.length)*.8)reason='첫 페이지 본문 유사';
     else if(!cross&&x.cohort&&x.cohort===y.cohort&&/발췌|변환|순수|통합|공식원본/.test((a.title||'')+' '+(b.title||'')))reason='같은 기수·판본 후보 · 본문 대조 필요';
-    if(reason)result.push({ids:[a.id,b.id],titles:[a.title,b.title],reason,booklets:[a.form||'',b.form||'']});
+    if(reason){seen.add(key);result.push({ids:[a.id,b.id],titles:[a.title,b.title],reason,booklets:[a.form||'',b.form||'']})}
+  }
+  // Postings restrict comparisons to papers sharing evidence. Identical sketches
+  // share a representative so a collection of N copies does not create N² rows.
+  for(const {paper:d} of index.groups.values()){
+    const i=index.identities.get(d.id);if(!i.exam)continue;
+    for(const time of [i.year&&'y'+i.year,i.cohort&&'c'+i.cohort].filter(Boolean)){
+      const scope=i.exam+'|'+time;
+      if(!scopes.has(scope))scopes.set(scope,{postings:new Map(),reps:new Map()});
+      const {postings,reps}=scopes.get(scope),q=d.questionSketch||[],sig=d.signature||[],tokens=[];
+      if(q.length>=3)for(const v of q)tokens.push('q'+v);
+      if(sig.length>=10)for(const v of sig)tokens.push('s'+v);
+      if(i.cohort)tokens.push('c'+i.cohort+'|'+i.subject);
+      if(!tokens.length)continue;
+      const group=JSON.stringify([coset(i,scope),i.subject,i.forms,q,sig,!!(d.title&&/발췌|변환|순수|통합|공식원본/.test(d.title))]);
+      if(reps.has(group)){compare(reps.get(group),d);continue}
+      const possible=new Set();for(const token of tokens)for(const other of postings.get(token)||[])possible.add(other);
+      for(const other of possible)compare(other,d);
+      reps.set(group,d);for(const token of tokens){if(!postings.has(token))postings.set(token,[]);postings.get(token).push(d)}
+    }
   }
   return result;
 }
@@ -103,7 +117,7 @@ export function diagnostics(index,subject=''){
       후보:g.status[field].candidates.map(c=>({id:c.id,제목:index.byId.get(c.id)?.title,사유:c.reason,선택가능:c.selectable}))};
   });
   return {format:'yu-study-link-diagnostics',version:2,과목:subject||'전체',집계:{문제지:papers.length,...stats,중복후보쌍:duplicates.length},
-    누락목록:rows.filter(r=>r.필요자료||r.연결검토||[r.정답상태,r.해설상태].includes('연결 해제')),시험지별:rows,미연결자료:orphans,
+    누락목록:rows.filter(r=>r.필요자료||r.연결검토||[r.정답상태,r.해설상태].includes('연결 해제')).map(({정답지,해설지,...summary})=>summary),시험지별:rows,미연결자료:orphans,
     중복후보:duplicates,분류검토:docs.filter(d=>d.auditError||d.auditIssue||d.reviewReasons?.length).map(d=>({id:d.id,제목:d.title,사유:[...(d.reviewReasons||[]),...(d.auditIssue?[d.auditIssue]:[]),...(d.auditError?[d.auditError]:[])]}))};
 }
 export function confirmCandidates(s,choices){

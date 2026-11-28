@@ -47,3 +47,22 @@ test('content overlap finds a reordered subject excerpt but never edits or merge
   const before=JSON.stringify([a,b]);assert.equal(duplicateGroups(materialIndex([a,b])).length,1);assert.equal(JSON.stringify([a,b]),before);
   b.questionSketch=[1,2,3];assert.equal(duplicateGroups(materialIndex([a,b])).length,0);
 });
+test('a contradictory package grade cannot authorize a link; different paper bytes are review only',()=>{
+  const a=paper(1,'행정법',{exam:'군무원 9급',grade:'9급'}),b=paper(2,'행정법',{exam:'군무원 7급',grade:'7급'}),c=key(4,{exam:'군무원 7급',grade:'7급'});
+  const r=row(a,c,true,{exam:'군무원7급',grade:'7급'});r.linked_targets[0].exam='군무원9급';
+  const s=initial();s.documents=[a,b,c];attachRepair(s,readRepair({files:[r]}));
+  const info=materialIndex(s.documents).groups.get(a.id).status.answers;
+  assert.equal(info.state,'후보 검토');assert.equal(info.candidates[0].selectable,false);assert.match(info.reason,/급수/);
+  const twin={...b,id:'v',hash:h(20)};s.documents.push(twin);
+  attachRepair(s,readRepair({files:[row(b,c,true,{exam:'군무원7급',grade:'7급'})]}));
+  const g=materialIndex(s.documents).groups.get(twin.id);
+  assert.equal(g.status.answers.state,'후보 검토');assert.equal(g.answers.length,0);
+});
+test('protect study and user-selected types while still reporting a misclassified companion',()=>{
+  const p=paper(1),k=paper(2),s=initial();s.documents=[p,k];record(s,k,k.session,[1]);
+  const before=structuredClone(s.events);attachRepair(s,readRepair({files:[row(p,k,true)]}));
+  assert.equal(k.type,'문제지');assert.deepEqual(s.events,before);
+  const g=materialIndex(s.documents).groups.get(p.id);assert.equal(g.status.answers.state,'후보 검토');assert.equal(g.status.answers.candidates[0].selectable,false);
+  const lockedSolution={...k,id:'locked',hash:h(19),classificationLocked:true};s.documents.push(lockedSolution);
+  attachRepair(s,readRepair({files:[row(p,lockedSolution,true)]}));assert.equal(lockedSolution.type,'문제지');
+});

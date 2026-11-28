@@ -9,9 +9,9 @@ const require=createRequire(import.meta.url),{webkit,chromium}=require('playwrig
 const tablet=process.env.YU_TEST_ENGINE==='webkit',server=testServer({sourceModules:true});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port,url=origin+'/yu-study/';
-const engine=await (tablet?webkit:chromium).launch({headless:true,...(tablet?{}:{executablePath:process.env.YU_BROWSER})});
+const browser=await (tablet?webkit:chromium).launchPersistentContext('',{headless:true,...(tablet?{}:{executablePath:process.env.YU_BROWSER}),
+  viewport:{width:834,height:1194},isMobile:tablet,hasTouch:true,acceptDownloads:true});
 try{
-  const browser=await engine.newContext({viewport:{width:834,height:1194},isMobile:tablet,hasTouch:true,acceptDownloads:true});
   const p=await browser.newPage();p.setDefaultTimeout(15000);
   const errors=[];p.on('pageerror',e=>errors.push(e.message));
   const template=await fixturePaper(6),s=initial(),files=[],claims=[],hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -86,5 +86,27 @@ try{
   assert.ok(result.분류검토.some(d=>d.id===missing.id));
   await p.locator('#audit-run').click();await p.locator('#audit-note').filter({hasText:'마쳤습니다'}).waitFor();
   const repeat=await p.evaluate(async()=>(await import('/proof-src/link-audit-job.js')).lastAudit());assert.equal(repeat.total,1);
+  const supplement=Buffer.concat([template,Buffer.from('% answer for two future papers')]),digest=hash(supplement);
+  const newPapers=[paper,exam2].map((d,i)=>{
+    const bytes=Buffer.concat([template,Buffer.from('% future paper '+i)]);
+    return {...d,id:'future-'+i,hash:hash(bytes),bytes:[...bytes],form:'나'};
+  });
+  const zip=new (require('jszip'))(),manifest=[];
+  for(const target of newPapers){
+    const path=target.subject+'/2025 국가직9급 '+target.subject+' 나형 정답지.pdf';
+    zip.file(path,supplement);manifest.push({path,subject:target.subject,role:'최종정답',year:'2025',exam:'국가직9급',grade:'9급',booklet:'나',sha256:digest,
+      auto_link_allowed:true,linked_targets:[{question_ref:{sha256:target.hash},booklet:'나',auto_link_allowed:true,validation:'단일 책형 대조'}]});
+  }
+  zip.file('manifest.json',JSON.stringify({files:manifest}));await p.locator('#modal form button').click();
+  await p.locator('#bring').click();await p.locator('#bulk-files').setInputFiles({name:'가상 수집.zip',mimeType:'application/zip',buffer:await zip.generateAsync({type:'nodebuffer'})});
+  await p.locator('#bulk-register').waitFor();assert.match(await p.locator('#bulk-counts').innerText(),/신규 1 · 등록 0 · 중복 1/);
+  await p.locator('#bulk-register').click();await p.waitForFunction(()=>document.querySelector('#bulk-counts')?.textContent.includes('등록 1'));
+  const merged=await p.evaluate(async({newPapers,digest})=>{
+    const db=await import('/proof-src/db.js'),{materialIndex}=await import('/proof-src/materials.js');
+    await db.change(s=>{for(const {bytes,...d} of newPapers)s.documents.push(d)},newPapers.map(d=>[d.hash,new Blob([new Uint8Array(d.bytes)])]));
+    const s=await db.state(),matching=s.documents.filter(d=>d.hash===digest),ix=materialIndex(s.documents);
+    return {files:matching.length,edges:matching[0].linkEvidence.length,parents:ix.parents.get(matching[0].id)?.map(d=>d.id)};
+  },{newPapers,digest});
+  assert.equal(merged.files,1);assert.equal(merged.edges,2);assert.deepEqual(merged.parents,['future-0','future-1']);
   assert.deepEqual(errors,[]);console.log((tablet?'WebKit touch':'Chromium')+' · hash repair, both subjects, manual batch, mismatch, orphan export, resumed/cached audit and unchanged source keys + study records passed.');
-}finally{await engine.close();server.close()}
+}finally{await browser.close();server.close()}

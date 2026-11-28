@@ -1,7 +1,7 @@
 import {state,get,transaction} from './db.js';
 import {classifyExam} from './exam-catalog.js';
 import {materialKind,setMaterialType} from './materials.js';
-import {identity,subjectName} from './exam-identity.js';
+import {identity,subjectName,gradeOf} from './exam-identity.js';
 import {protectedPapers,questionSketch,readRepair} from './audit-model.js';
 import {openZip} from './archive-zip.js';
 import {initial} from './model.js';
@@ -56,7 +56,7 @@ export async function runAudit(control,report=()=>{}){
         const protectedIds=protectedPapers(s);
         for(const row of batch){
           const d=byId.get(row.id);job.cursor++;
-          if(!d||d.deleted||stamp(d)!==row.stamp)continue;
+          if(!d||d.deleted||d.hash!==row.hash||stamp(d)!==row.stamp)continue;
           if(row.read)job.read++;else job.reused++;
           if(row.missing)d.fileMissing=true;else delete d.fileMissing;
           if(row.error){job.issues++;d.auditError=row.error}
@@ -68,7 +68,8 @@ export async function runAudit(control,report=()=>{}){
               for(const key of fields){
                 const v=info[key];
                 if(!v||v==='미분류'||key==='subject'&&protectedIds.has(d.id))continue;
-                if(!d[key]||d[key]==='미분류'||key==='exam'&&identity(d).exam===identity(info).exam||key==='subject'&&d[key]!==v&&subjectName(d[key])===v)d[key]=v;
+                const sameExam=key==='exam'&&identity(d).exam===identity(info).exam&&(!gradeOf(d.exam)||gradeOf(d.exam)===gradeOf(v));
+                if(!d[key]||d[key]==='미분류'||sameExam||key==='subject'&&d[key]!==v&&subjectName(d[key])===v)d[key]=v;
               }
               if(!d.linkEvidence?.length&&info.typeEvidence&&materialKind(info)!==materialKind(d)){
                 if(!protectedIds.has(d.id)&&d.importId&&!info.reviewReasons.some(r=>/유형 불일치|문제지·정답지/.test(r)))setMaterialType(d,materialKind(info));
@@ -80,6 +81,7 @@ export async function runAudit(control,report=()=>{}){
             }
             if(row.sketch?.length)d.questionSketch=row.sketch;
             if(row.checked)d.sketchChecked=true;
+            if(d.auditIssue&&d.linkEvidence?.length&&d.linkEvidence.every(e=>e.kind===materialKind(d)))delete d.auditIssue;
             if(old!==JSON.stringify([d.type,...fields.map(k=>d[k])]))job.updated++;
           }
           d.auditStamp=stamp(d);dirty=true;
@@ -93,7 +95,7 @@ export async function runAudit(control,report=()=>{}){
   }
   try{
     for(let i=job.cursor;i<job.items.length&&!control.signal.aborted;i++){
-      const [id,hash]=job.items[i],d=docs.get(id),row={id,stamp:d&&stamp(d)};report(i,job.items.length,d?.title||'');if(control.signal.aborted)break;
+      const [id,hash]=job.items[i],d=docs.get(id),row={id,hash,stamp:d&&stamp(d)};report(i,job.items.length,d?.title||'');if(control.signal.aborted)break;
       if(!presence.has(hash))presence=await fileKeys(i);
       if(d&&d.hash===hash)try{
         if(!presence.get(hash)){row.missing=true;throw Error('기기에 원본 PDF가 없습니다.')}

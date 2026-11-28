@@ -1,3 +1,4 @@
+import {mergeEvidence} from './link-evidence.js';
 import {state,get,change,hash,digestBytes,transaction,exclusive,entries} from './db.js';
 import {validate,initial} from './model.js';
 import {attemptKey,reconcilePurged} from './notebook-model.js';
@@ -42,6 +43,8 @@ function mergeRecords(existing,incoming){
   for(const d of incoming.documents){
     if(byId.has(d.id)&&byId.get(d.id).hash!==d.hash)throw Error('같은 자료 ID의 원본이 서로 달라 병합을 중단했습니다.');
     map.set(d.id,byHash.get(d.hash)?.id||d.id);
+    const local=byHash.get(d.hash);
+    if(local&&d.linkEvidence?.length)local.linkEvidence=mergeEvidence(local.linkEvidence,d.linkEvidence);
   }
   const qmap=new Map(incoming.questions.map(q=>[q.id,map.get(q.doc)+'#'+q.number]));
   const priorTrash=new Set((existing.removedMistakes||[]).flatMap(b=>b.events.map(attemptKey)));
