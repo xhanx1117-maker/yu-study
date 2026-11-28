@@ -100,7 +100,7 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
   const filterPanel=app.querySelector('.library-filters');
   filterPanel.querySelector('summary').addEventListener('click',()=>{if(!filterPanel.open)checkpoint()});
   filterPanel.ontoggle=e=>{if(e.target.isConnected){f.filterOpen=e.target.open;tabs()}};
-  at('link-coverage').onclick=()=>coverage(index,f.subject);
+  at('link-coverage').onclick=guard(()=>coverage(index,f.subject,refresh));
   function editBar(){
     tools.hidden=!editing;if(!editing)return;
     tools.innerHTML='<div class="row"><strong>선택 '+selected.size+'개</strong>'+action('select-results','현재 필터 전체 선택')+action('select-none','선택 해제')+
@@ -124,8 +124,8 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
       switch(f.extra){
         case '즐겨찾기':return d.favorite;
         case '최근 열람':return d.opened;
-        case '정답지 미보유':return group&&!group.answers.length;
-        case '해설지 미보유':return group&&!group.solutions.length;
+        case '정답지 미보유':return group?.status.answers.state==='기기 내 후보 없음';
+        case '해설지 미보유':return group?.status.solutions.state==='기기 내 후보 없음';
         case '연결 검토 필요':return group?.review||d.reviewReasons?.length;
         case '미분류 자료':return d.subject==='미분류'||d.reviewReasons?.length;
         default:return true;
@@ -144,6 +144,7 @@ export function mountLibrary(app,s,{open,edit,bring,refresh,inventory,checkpoint
     const b=e.target.closest('button'),card=e.target.closest('[data-card]');
     if(!card||e.target.closest('input'))return;
     const id=card.dataset.card,d=byId.get(id),g=index.groupFor(id);
+    if(b?.dataset.linkReview)return coverage(index,f.subject,refresh,b.dataset.linkReview);
     if(b?.dataset.edit)return edit(s,d);
     if(b?.dataset.restoreOne)return restoreIds(new Set([id]));
     if(b?.dataset.purgeOne)return purge([id]);
@@ -200,6 +201,7 @@ function bulkEdit(docs,s,refresh){
     if(kind!=='변경 안 함'&&changedIds.size&&!confirm('자료 '+changedIds.size+'개의 유형을 '+kind+'로 바꿀까요? 연결 문항 '+affected.size+'개 · 오답 이력 '+eventCount+'회를 보존합니다.'))return;
     await change(v=>{
       for(const d of v.documents)if(order.has(d.id)){
+        if(kind!=='변경 안 함'||sub!=='변경 안 함'||exam||year||verified)d.classificationLocked=true;
         if(kind!=='변경 안 함')setMaterialType(d,kind);
         if(sub!=='변경 안 함')changeDocumentSubject(v,d,sub);if(year)d.year=year;if(exam){d.exam=exam;const grade=exam.match(/[1-9]급/);if(grade)d.grade=grade[0]}
         if(verified)d.reviewReasons=[];

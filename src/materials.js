@@ -46,7 +46,7 @@ function missingDimension(a,b){
   return '';
 }
 export function materialIndex(documents){
-  const byId=new Map(),ids=new Map(),broad=new Map(),proofs=new Map(),papers=new Map(),unidentified=new Map();
+  const byId=new Map(),ids=new Map(),broad=new Map(),proofs=new Map(),claimedScopes=new Map(),papers=new Map(),unidentified=new Map();
   const groups=new Map(),parents=new Map();
   for(const d of documents){
     if(d.deleted)continue;
@@ -56,7 +56,9 @@ export function materialIndex(documents){
       continue;
     }
     if(!['정답지','해설지'].includes(kind))continue;
-    for(const e of d.linkEvidence||[])if(e.kind===kind)append(proofs,e.paper,{d,e});
+    for(const e of d.linkEvidence||[])if(e.kind===kind){
+      append(proofs,e.paper,{d,e});for(const t of timeKeys(e))append(claimedScopes,scope(e.subject,e.exam,t,kind),{d,e});
+    }
     if(d.linkEvidence?.length)continue;
     const subs=subjects.filter(sub=>coversSubject(d,sub));
     if(!id.exam||!timeKeys(id).length||!subs.length){
@@ -75,15 +77,16 @@ export function materialIndex(documents){
         const prev=candidates.get(d.id);
         if(!prev||!ok)candidates.set(d.id,{id:d.id,reason,selectable:ok});
       }
-      const peerBucket=new Set(times.flatMap(t=>papers.get(scope(a.subject,a.exam,t,a.forms[0]||''))||[]));
       let hasPeer;
       function ambiguousPeer(){
-        if(hasPeer===undefined)hasPeer=[...peerBucket].some(q=>q.id!==p.id&&!conflict(a,ids.get(q.id))&&(!count(q)||!count(p)||count(q)===count(p)));
+        if(hasPeer===undefined)hasPeer=times.some(t=>(papers.get(scope(a.subject,a.exam,t,a.forms[0]||''))||[]).some(q=>q.id!==p.id&&!conflict(a,ids.get(q.id))&&(!count(q)||!count(p)||count(q)===count(p))));
         return hasPeer;
       }
       for(const {d,e} of proofs.get(p.hash)||[]){
         if(e.kind!==kind)continue;
-        const mismatch=evidenceConflict(p,a,e)||((d.classificationLocked||!d.combined)&&ids.get(d.id).forms.length&&a.forms.length&&
+        const metadata=ids.get(d.id);
+        const locked=d.classificationLocked&&(conflict(a,metadata)||!coversSubject({...d,linkEvidence:[]},a.subject)&&'수동 지정 과목 불일치');
+        const mismatch=d.fileMissing&&'기기에서 PDF 원본을 찾을 수 없음'||locked||evidenceConflict(p,a,e)||((d.classificationLocked||!d.combined)&&ids.get(d.id).forms.length&&a.forms.length&&
           !a.forms.some(v=>ids.get(d.id).forms.includes(v))?'등록 자료 책형 불일치':'');
         candidate(d,mismatch||e.reason,!mismatch&&d.autoLink!==false);
         if(mismatch||!e.allow||d.autoLink===false)verified.delete(d);
@@ -93,20 +96,24 @@ export function materialIndex(documents){
         // A conflicting or withheld claim for the same bytes/target always wins.
         return candidates.get(d.id)?.selectable&&!(d.linkEvidence||[]).some(e=>e.paper===p.hash&&e.kind===kind&&!e.allow);
       });
+      for(const t of times)for(const {d,e} of claimedScopes.get(scope(a.subject,a.exam,t,kind))||[]){
+        if(candidates.has(d.id)||evidenceConflict(p,a,e))continue;
+        candidate(d,'시험 정보는 일치 · 대조표에서 다른 원본 해시를 지정',!d.fileMissing&&d.autoLink!==false);
+      }
       const possible=new Set(times.flatMap(t=>broad.get(scope(a.subject,a.exam,t,kind))||[]));
       for(const d of possible){
         const b=ids.get(d.id),mismatch=conflict(a,b);
         if(mismatch||count(p)&&count(d)&&count(p)!==count(d))continue;
-        const reason=d.autoLink===false?'자료 자동 연결 해제':!a.exam||!a.year?'시험 식별 정보 부족':
+        const reason=d.fileMissing?'기기에서 PDF 원본을 찾을 수 없음':d.manifestHeld?'수집 목록에서 수동 검증 지정':d.autoLink===false?'자료 자동 연결 해제':!a.exam||!a.year?'시험 식별 정보 부족':
           missingDimension(a,b)||(kind==='정답지'||a.forms.length||b.forms.length)&&(!a.forms.length||!b.forms.length)&&'책형 대조 필요'||
           blocking(d)||blocking(p)||(ambiguousPeer()?'같은 시험의 문제지 판본 여러 개':'');
-        candidate(d,reason||'과목·시험·판본 일치',d.autoLink!==false);
+        candidate(d,reason||'과목·시험·판본 일치',!d.fileMissing&&d.autoLink!==false);
         if(!reason)exact.push(d);
       }
       const options=(direct.length?direct:exact).sort(displayOrder);
       let state,reason;
       if(Array.isArray(manual)){
-        group[field]=[...new Set(manual)].map(id=>byId.get(id)).filter(d=>d&&materialKind(d)===kind);
+        group[field]=[...new Set(manual)].map(id=>byId.get(id)).filter(d=>d&&!d.fileMissing&&materialKind(d)===kind);
         state=group[field].length?'연결 완료':manual.length?'판정 보류':'연결 해제';
         reason=manual.length!==group[field].length?'직접 지정한 자료 누락 또는 유형 변경':'사용자 직접 지정';
         if(manual.length!==group[field].length)group.review=true;
@@ -140,7 +147,7 @@ export function materialIndex(documents){
 export function missingMaterials(index,subject=''){
   const rows=[];
   for(const g of index.groups.values()){
-    const p=g.paper;if(subject&&p.subject!==subject)continue;
+    const p=g.paper;if(!coversSubject(p,subject))continue;
     const missing=roles.filter(([,field])=>g.status[field].state==='기기 내 후보 없음').map(([kind])=>kind);
     rows.push({과목:p.subject,연도:p.year||'',시험:p.exam||'',회차:p.round||'',책형:p.form||'',제목:p.title,필요자료:missing.join(' · '),연결검토:g.review,
       정답상태:g.status.answers.state,해설상태:g.status.solutions.state});

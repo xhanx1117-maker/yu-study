@@ -32,7 +32,9 @@ export function applyEntry(info,row,hash){
   if(checksum!=null&&(typeof checksum!=='string'||checksum.toLowerCase()!==hash))return warn('manifest 해시 불일치');
   const evidence=manifestEvidence(row,hash);
   if(evidence.length)info.linkEvidence=evidence;
-  const type=types.get(row.type??row.materialType)||(evidence.length?roleKind(row.role):'');
+  const hashBound=/^[a-f0-9]{64}$/.test(hash)&&typeof checksum==='string'&&checksum.toLowerCase()===hash;
+  if(hashBound&&(!evidence.length&&Array.isArray(row.linked_targets)||row.auto_link_allowed===false))info.manifestHeld=true;
+  const type=types.get(row.type??row.materialType)||(hashBound?roleKind(String(row.role||'')):'');
   if((row.type||row.materialType)&&!type)return warn('manifest 자료 유형 미확인');
   if(type){
     if(info.typeEvidence&&materialKind(info)!==materialKind({type})&&!evidence.length)return warn('manifest 자료 유형 불일치');

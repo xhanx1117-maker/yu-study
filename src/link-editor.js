@@ -1,3 +1,4 @@
+import {identity} from './exam-identity.js';
 import {materialKind,answerLabel,coversSubject} from './materials.js';
 import {bindSearch,searchKey} from './search.js';
 import {esc,options} from './ui.js';
@@ -30,6 +31,15 @@ export function linkEditor(root,doc,docs){
     };
     draw();
     controls.push({save(d){
+      if(select.value==='직접 연결'){
+        const paper=identity(d);
+        for(const id of chosen){
+          if(old?.includes(id))continue;
+          const picked=docs.find(x=>x.id===id);if(!picked)throw Error('대상 자료가 없습니다.');
+          const target=identity(picked);
+          if(paper.forms.length&&target.forms.length&&!paper.forms.some(f=>target.forms.includes(f)))throw Error('서로 다른 책형입니다. 자료 관리에서 책형을 확인하세요.');
+        }
+      }
       if(select.value==='직접 연결'&&!chosen.size)throw Error(kind+'를 선택하거나 자동 연결을 선택하세요.');
       if(select.value==='자동 연결'){
         delete d[key];if(d.autoLink===false)d.autoLink=true;

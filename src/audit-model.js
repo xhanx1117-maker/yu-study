@@ -1,5 +1,5 @@
 import {materialKind,materialIndex,roles,setMaterialType,missingMaterials,coversSubject} from './materials.js';
-import {identity,conflict,subjectName,compact,sitting} from './exam-identity.js';
+import {conflict} from './exam-identity.js';
 import {manifestEvidence,mergeEvidence} from './link-evidence.js';
 import {protectedRegion} from './region-records.js';
 import {subjects} from './model.js';
@@ -53,36 +53,29 @@ export function attachRepair(s,claims){
   }
   return {matched:seen.size,modified,absent:claims.size-seen.size};
 }
-// Hold only small fingerprints. Exact question samples are also useful when a
-// combined exam contains just the subject excerpt, or questions were reordered.
-export function questionSketch(texts){
-  const values=new Set();
-  for(const text of texts){
-    const s=compact(String(text||'').replace(/^\s*(?:문제?|제)?\s*\d{1,3}\s*[.)번]\s*/,''));if(s.length<20)continue;
-    const piece=s.slice(0,90);let h=2166136261;
-    for(let n=0;n<piece.length;n++)h=Math.imul(h^piece.charCodeAt(n),16777619);
-    values.add(h>>>0);if(values.size>=300)break;
-  }return [...values].sort((a,b)=>a-b);
-}
+export {questionSketch} from './question-sketch.js';
 export function duplicateGroups(index,subject=''){
   const lists=new Map(),seen=new Set(),result=[];
   function put(key,d){if(!lists.has(key))lists.set(key,[]);lists.get(key).push(d)}
   for(const {paper:d} of index.groups.values()){
-    const i=index.identities.get(d.id);if(subject&&i.subject!==subject||!i.exam||!subjects.includes(i.subject))continue;
-    const scope=i.exam+'|'+i.subject+'|';if(i.year)put(scope+'y'+i.year,d);if(i.cohort)put(scope+'c'+i.cohort,d);
+    const i=index.identities.get(d.id);if(!i.exam)continue;
+    const scope=i.exam+'|';if(i.year)put(scope+'y'+i.year,d);if(i.cohort)put(scope+'c'+i.cohort,d);
   }
   for(const list of lists.values())for(let n=0;n<list.length;n++)for(let m=0;m<n;m++){
     const a=list[m],b=list[n],key=JSON.stringify([a.id,b.id].sort());if(seen.has(key))continue;seen.add(key);
     const x=index.identities.get(a.id),y=index.identities.get(b.id);
-    if(conflict({...x,forms:[]},{...y,forms:[]}))continue;
+    if(subject&&x.subject!==subject&&y.subject!==subject)continue;
+    const integrated=d=>!subjects.includes(d.subject)||/통합|발췌/.test(d.title||'');
+    const cross=x.subject!==y.subject;
+    if(cross&&!(integrated(a)||integrated(b))||conflict({...x,forms:[]},{...y,forms:[]}))continue;
     const qa=a.questionSketch||[],qb=b.questionSketch||[],sa=a.signature||[],sb=b.signature||[];
     const overlap=(as,bs)=>{const set=new Set(as);return bs.filter(v=>set.has(v)).length};
     let reason;
     if(Math.min(qa.length,qb.length)>=3){
       const same=overlap(qa,qb);if(same>=3&&same>=Math.min(qa.length,qb.length)*.65)reason='문항 본문 '+same+'개 일치';
       else continue;
-    }else if(Math.min(sa.length,sb.length)>=10&&overlap(sa,sb)>=Math.min(sa.length,sb.length)*.8)reason='첫 페이지 본문 유사';
-    else if(x.cohort&&x.cohort===y.cohort&&/발췌|변환|순수|통합|공식원본/.test((a.title||'')+' '+(b.title||'')))reason='같은 기수·판본 후보 · 본문 대조 필요';
+    }else if(!cross&&Math.min(sa.length,sb.length)>=10&&overlap(sa,sb)>=Math.min(sa.length,sb.length)*.8)reason='첫 페이지 본문 유사';
+    else if(!cross&&x.cohort&&x.cohort===y.cohort&&/발췌|변환|순수|통합|공식원본/.test((a.title||'')+' '+(b.title||'')))reason='같은 기수·판본 후보 · 본문 대조 필요';
     if(reason)result.push({ids:[a.id,b.id],titles:[a.title,b.title],reason,booklets:[a.form||'',b.form||'']});
   }
   return result;
@@ -91,8 +84,9 @@ export function diagnostics(index,subject=''){
   const docs=[...index.byId.values()].filter(d=>coversSubject(d,subject)),papers=[...index.groups.values()].filter(g=>coversSubject(g.paper,subject));
   const stats={},orphans=[],rows=missingMaterials(index,subject),duplicates=duplicateGroups(index,subject);
   for(const [kind,field] of roles){
-    const registered=docs.filter(d=>materialKind(d)===kind),unlinked=registered.filter(d=>!index.parents.has(d.id));
-    const counts={등록:registered.length,연결완료:0,등록후미연결:unlinked.length,후보검토:0,기기내후보없음:0,판정보류:0,연결해제:0};
+    const all=docs.filter(d=>materialKind(d)===kind),registered=all.filter(d=>!d.fileMissing),unlinked=all.filter(d=>!index.parents.has(d.id));
+    const distinct=list=>new Set(list.map(d=>d.hash||d.id)).size;
+    const counts={등록:distinct(registered),원본누락:all.filter(d=>d.fileMissing).length,연결완료:0,등록후미연결:distinct(unlinked.filter(d=>!d.fileMissing)),후보검토:0,기기내후보없음:0,판정보류:0,연결해제:0};
     const states={'연결 완료':'연결완료','후보 검토':'후보검토','기기 내 후보 없음':'기기내후보없음','판정 보류':'판정보류','연결 해제':'연결해제'};
     const reverse=new Map();
     for(const g of index.groups.values())for(const c of g.status[field].candidates){
@@ -100,7 +94,7 @@ export function diagnostics(index,subject=''){
     }
     for(const g of papers)counts[states[g.status[field].state]]++;
     for(const d of unlinked)orphans.push({자료:d.id,제목:d.title,유형:kind,원본해시:d.hash,후보:reverse.get(d.id)||[],
-      사유:d.auditIssue||(d.autoLink===false?'자동 연결 해제':reverse.has(d.id)?'대상 문제지 검토 필요':d.linkEvidence?.length?'대조표 대상 원본 또는 분류 확인 필요':'시험 식별 정보가 맞는 문제지 없음')});
+      사유:d.auditError||d.auditIssue||(d.autoLink===false?'자동 연결 해제':reverse.has(d.id)?'대상 문제지 검토 필요':d.linkEvidence?.length?'대조표 대상 원본 또는 분류 확인 필요':'시험 식별 정보가 맞는 문제지 없음')});
     stats[kind]=counts;
   }
   rows.forEach((r,i)=>{
@@ -110,7 +104,7 @@ export function diagnostics(index,subject=''){
   });
   return {format:'yu-study-link-diagnostics',version:2,과목:subject||'전체',집계:{문제지:papers.length,...stats,중복후보쌍:duplicates.length},
     누락목록:rows.filter(r=>r.필요자료||r.연결검토||[r.정답상태,r.해설상태].includes('연결 해제')),시험지별:rows,미연결자료:orphans,
-    중복후보:duplicates,분류검토:docs.filter(d=>d.auditIssue||d.reviewReasons?.length).map(d=>({id:d.id,제목:d.title,사유:[...(d.reviewReasons||[]),...(d.auditIssue?[d.auditIssue]:[])]}))};
+    중복후보:duplicates,분류검토:docs.filter(d=>d.auditError||d.auditIssue||d.reviewReasons?.length).map(d=>({id:d.id,제목:d.title,사유:[...(d.reviewReasons||[]),...(d.auditIssue?[d.auditIssue]:[]),...(d.auditError?[d.auditError]:[])]}))};
 }
 export function confirmCandidates(s,choices){
   const index=materialIndex(s.documents),updates=new Map();

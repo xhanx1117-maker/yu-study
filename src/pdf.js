@@ -1,3 +1,4 @@
+import {questionSketch} from './question-sketch.js';
 import {explanationMarkers} from './exam-catalog.js';
 import {examPixels,pageFrame,beforeLine,tightBand,regionVersion,repeatedPageEdges} from './exam-regions.js';
 const base=new URL('vendor/',document.baseURI);
@@ -19,7 +20,7 @@ export async function openPdf(blob,worker,signal){
   const cancel=()=>task.destroy().catch(()=>{});signal?.addEventListener('abort',cancel,{once:true});
   try{return await task.promise}catch(error){await task.destroy().catch(()=>{});throw error}finally{signal?.removeEventListener('abort',cancel)}
 }
-export async function probePdf(data,worker,path='',signal){
+export async function probePdf(data,worker,path='',signal,collectQuestions=false){
   const pdf=await openPdf(data,worker,signal);
   try{
     const page=await pdf.getPage(1),lines=pageText(page.getViewport({scale:1}),await textContent(page));
@@ -37,8 +38,31 @@ export async function probePdf(data,worker,path='',signal){
       try{tailSample=(await textContent(last)).items.slice(0,240).map(item=>item.str||'').join(' ').slice(0,6500)}
       finally{last.cleanup()}
     }
+    let sketch=[];
+    if(collectQuestions){
+      const hashes=new Set();
+      for(let n=1;n<=pdf.numPages&&hashes.size<300;n++){
+        signal?.throwIfAborted();
+        let linesOnPage=lines;
+        if(n!==1){
+          const next=await pdf.getPage(n);
+          try{linesOnPage=pageText(next.getViewport({scale:1}),await textContent(next))}finally{next.cleanup()}
+        }
+        const markers=markerLines(linesOnPage,300),split=markers.some(l=>l.x<.28)&&markers.some(l=>l.x>.42&&l.x<.66);
+        for(const right of split?[false,true]:[false]){
+          const lane=linesOnPage.filter(l=>!split||(l.x>=.45)===right).sort((a,b)=>Math.abs(a.base-b.base)<Math.min(a.h,b.h)*.35?a.x-b.x:a.base-b.base);
+          let block='';
+          for(const l of lane){
+            if(markers.some(m=>m.x===l.x&&m.y===l.y)){for(const v of questionSketch([block]))hashes.add(v);block=l.str}
+            else if(block&&block.length<350)block+=' '+l.str;
+          }
+          for(const v of questionSketch([block]))hashes.add(v);
+        }
+      }
+      sketch=[...hashes].sort((a,b)=>a-b);
+    }
     const explicitCount=heading.match(/(?:총|전체)\s*(\d{1,3})\s*문항/);
-    return {heading,sample,tailSample,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};
+    return {heading,sample,tailSample,questionSketch:sketch,pages:pdf.numPages,scanned:!sample.trim(),explicitCount:explicitCount&&+explicitCount[1]<=300?+explicitCount[1]:0};
   }finally{await pdf.destroy()}
 }
 export async function paint(pdf,page,canvas,width=1100,region=null,signal){
