@@ -78,6 +78,10 @@ try{
   assert.equal(await page.locator('[data-q]').count(),1);
   await page.locator('#modal form button').click();
   await page.getByRole('button',{name:'자료실',exact:true}).click();
+  await page.locator('.library-filters > summary').click();
+  await page.locator('#link-coverage').click();
+  await page.locator('#audit-run').waitFor();await page.locator('#missing-json').waitFor();
+  await page.locator('#modal form button').click();
   await page.locator('#bring').click();
   const corpus=await PDFDocument.create();
   corpus.addPage([728,1031]).drawText('1. Fictional offline archive question',{x:32,y:902});

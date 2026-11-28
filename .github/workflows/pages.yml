@@ -1,7 +1,7 @@
 name: Test and publish Yu study
 on:
   push:
-    branches: [main, notebook-workbooks-v03, exam-print-v04, bulk-library-v05, library-companions-v06]
+    branches: [main, notebook-workbooks-v03, exam-print-v04, bulk-library-v05, library-companions-v06, link-audit-v061]
   workflow_dispatch:
 permissions:
   contents: read
@@ -102,24 +102,30 @@ jobs:
         env:
           YU_BROWSER: /usr/bin/google-chrome
       - run: npx playwright install --with-deps webkit
+      - name: Validate existing archive repair and resumable inspections in Chromium and tablet WebKit
+        run: |
+          node scripts/link-audit-test.mjs
+          YU_TEST_ENGINE=webkit node scripts/link-audit-test.mjs
+        env:
+          YU_BROWSER: /usr/bin/google-chrome
       - name: Verify linked PDFs, offline positions and touch history in WebKit
         run: node scripts/companion-test.mjs
         env:
           YU_TEST_ENGINE: webkit
       - uses: actions/checkout@v4
         with:
-          ref: b92366a1bffa94b6ea8c1784fb97dbcfeee0f255
-          path: deployed-v051
-      - name: Upgrade an installed v0.5.1 app with existing files, study and trash history
+          ref: 3512b12eb004e7355fe199e223cf4b15ed090f44
+          path: deployed-v060
+      - name: Upgrade an installed v0.6.0 app with existing files, study and trash history
         run: |
-          ln -s "$GITHUB_WORKSPACE/node_modules" deployed-v051/node_modules
-          npm --prefix deployed-v051 run build
+          ln -s "$GITHUB_WORKSPACE/node_modules" deployed-v060/node_modules
+          npm --prefix deployed-v060 run build
           node scripts/browser-test.mjs
           YU_TEST_ENGINE=webkit node scripts/browser-test.mjs
         env:
           YU_BROWSER: /usr/bin/google-chrome
-          YU_PREVIOUS_VERSION: 0.5.1
-          YU_PREVIOUS_DIST: deployed-v051/dist
+          YU_PREVIOUS_VERSION: 0.6.0
+          YU_PREVIOUS_DIST: deployed-v060/dist
   performance:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
