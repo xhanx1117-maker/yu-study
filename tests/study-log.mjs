@@ -25,18 +25,28 @@ function fixture(){
 }
 test('migrate dated archived events and explicit completions once, including a zero-error attempt',()=>{
   const s=fixture(),rows=legacyRows(s);
-  assert.equal(rows.length,3);assert.deepEqual(rows.filter(r=>r.kind==='wrong').map(r=>r.count),[1,2]);
-  assert.equal(rows[0].grade,'9급');assert.equal(rows[0].form,'가');
+  assert.equal(rows.length,4);assert.equal(rows.filter(r=>r.day).length,3);assert.deepEqual(rows.filter(r=>r.kind==='wrong').sort((a,b)=>a.day.localeCompare(b.day)).map(r=>r.count),[1,2]);
+  assert.equal(rows.find(r=>r.kind==='wrong').grade,'9급');assert.equal(rows[0].form,'가');
   assert.deepEqual(legacyRows(s).map(r=>r.id),rows.map(r=>r.id));
   assert.throws(()=>verifyStudyRows([...rows,rows[0]]));assert.deepEqual(verifyStudyRows(rows),rows);
   s.events[0].date='2026-11-30';assert.ok(legacyRows(s).some(r=>r.time==='2026-11-30'));
 });
 test('daily, subject, exam, unique and occurrence counts withstand repeat attempts and quoted export',()=>{
-  const rows=legacyRows(fixture());rows.find(r=>r.kind==='solved').wrongInSession=0;
+  const rows=legacyRows(fixture()).filter(r=>r.day);assert.equal(rows.find(r=>r.kind==='solved').wrongInSession,0);
   const r=studyReport(rows,{from:'2026-11-28',to:'2026-11-29'});
   assert.equal(r.days.length,2);assert.equal(r.summary.occurrences,2);assert.equal(r.summary.new,1);assert.equal(r.summary.repeated,1);assert.equal(r.summary.unique,1);
   assert.equal(r.summary.cleanCompletedPapers,1);assert.equal(r.summary.themes[0].label,'미분류');
   assert.match(reportText(r),/기록된 오답 없음/);assert.doesNotMatch(reportText(r),/정답률|오답률|우선순위/);
   assert.match(reportText(r,true,true),/^# Yu: study/m);assert.match(reportText(r,true,true),/복습 우선순위/);
   assert.match(reportCsv(r),/"'=가상, ""시험"""/);assert.ok(reportCsv(r).startsWith('\uFEFF'));
+});
+
+test('undated mistakes affect completion and confidence without appearing in daily exports',()=>{
+  const archive=fixture();archive.sessions[1].solvedAt='2026-11-29T10:00:00Z';archive.events[1].q=archive.events[0].q;archive.events[1].number=1;
+  const rows=legacyRows(archive),unknown=rows.find(r=>r.kind==='undated');
+  assert.ok(unknown);assert.equal(unknown.day,undefined);
+  assert.equal(rows.find(r=>r.id==='solved:b').wrongInSession,2);
+  const report=studyReport(rows.filter(r=>r.day),{from:'2026-11-28',to:'2026-11-29'});
+  assert.equal(report.summary.new,0);assert.equal(report.summary.repeated,1);assert.equal(report.summary.uncertain,1);
+  assert.match(reportText(report),/누적 최소 1회/);
 });

@@ -1,6 +1,6 @@
-import {restoreStudy,verifyStudyRows} from './study-store.js';
+import {restoreStudy,verifyStudyRows,revisionKey} from './study-store.js';
 import {mergeEvidence} from './link-evidence.js';
-import {state,get,change,hash,digestBytes,transaction,exclusive,entries} from './db.js';
+import {get,change,hash,digestBytes,transaction,exclusive,entries} from './db.js';
 import {validate,initial} from './model.js';
 import {attemptKey,reconcilePurged} from './notebook-model.js';
 import {openZip,makeZip} from './archive-zip.js';
@@ -100,7 +100,10 @@ export async function restore(file,{merge=false}={}){
     const viewer=incoming.viewer,studyRows=verifyStudyRows(incoming.studyLog);delete incoming.viewer;delete incoming.studyLog;
     if(!Array.isArray(manifest.files)||expected.size!==keys.length||manifest.files.length!==keys.length||keys.some(k=>!expected.has(k)))throw Error('파일 목록 불일치');
     if(!confirm('PDF '+incoming.documents.length+'건과 오답 이력 '+incoming.events.length+'건을 '+(merge?'기존 자료에 병합할까요? 같은 문항의 기존 메모와 테마를 유지합니다.':'복원하여 현재 자료를 교체할까요? 현재 자료를 유지하려면 취소하고 ‘백업 병합’을 선택하세요.')))return false;
-    const before=JSON.stringify(await state());
+    const before=await transaction(['meta'],'readonly',({meta},read,done)=>{
+      const snapshot={};read(meta.get('archive'),s=>{snapshot.archive=JSON.stringify(s||initial())});
+      read(meta.get(revisionKey),revision=>{snapshot.revision=revision});done(snapshot);
+    });
     try{
       for(const k of keys){
         const blob=await read('files/'+k),bytes=await blob.arrayBuffer();
@@ -111,7 +114,8 @@ export async function restore(file,{merge=false}={}){
       }
       await transaction(['meta','files','studyLog'],'readwrite',({meta,files,studyLog},read)=>read(meta.get('archive'),raw=>{
         const current=raw||initial();
-        if(JSON.stringify(current)!==before)throw Error('복원 중 다른 창에서 자료가 바뀌었습니다. 다시 시도해 주세요.');
+        read(meta.get(revisionKey),revision=>{if(revision!==before.revision)throw Error('복원 중 학습 기록이 변경되었습니다. 다시 시도해 주세요.')});
+        if(JSON.stringify(current)!==before.archive)throw Error('복원 중 다른 창에서 자료가 바뀌었습니다. 다시 시도해 주세요.');
         const next=merge?mergeRecords(current,incoming):reconcilePurged(incoming,current.purgedAttempts);
         if(!merge){
           const keep=new Set(keys);meta.delete('library:recent');for(const d of current.documents)meta.delete('reader:'+d.id);
@@ -130,7 +134,7 @@ export async function restore(file,{merge=false}={}){
           });
         }
         for(const k of keys)meta.delete(stage+k);
-        restoreStudy(studyLog,read,next,incoming,studyRows,merge,()=>meta.put(next,'archive'));
+        restoreStudy(studyLog,read,next,incoming,studyRows,merge,()=>{meta.put(crypto.randomUUID(),revisionKey);meta.put(next,'archive')});
       }));
       return true;
     }finally{await cleanRestoreStage()}

@@ -1,10 +1,12 @@
 import {initial,validate} from './model.js';
-import {upgradeStudy,flushStudy} from './study-store.js';
+import {upgradeStudy,flushStudy,revisionKey} from './study-store.js';
 const opening=new Promise((resolve,reject)=>{
   const r=indexedDB.open('yu-study-archive',2);
+  const status=message=>window.dispatchEvent(new CustomEvent('yu-storage-progress',{detail:message}));
+  r.onblocked=()=>status('다른 Yu: study 창을 닫으면 학습 기록 업데이트를 계속합니다.');
   r.onupgradeneeded=()=>{
     for(const name of ['meta','files'])if(!r.result.objectStoreNames.contains(name))r.result.createObjectStore(name);
-    if(!r.result.objectStoreNames.contains('studyLog'))upgradeStudy(r.result,r.transaction);
+    if(!r.result.objectStoreNames.contains('studyLog'))upgradeStudy(r.result,r.transaction,(n,total)=>status('기존 학습 기록 정리 중 · '+n+' / '+total));
   };
   r.onerror=()=>reject(r.error);
   r.onsuccess=()=>{r.result.onversionchange=()=>r.result.close();resolve(r.result)};
@@ -40,7 +42,8 @@ export function change(fn,files=[],replace=false){
       const s=raw||initial(),v=fn(s)||s;
       if(replace){validate(v);blobs.clear()}
       for(const [key,file] of files)blobs.put(file,key);
-      flushStudy(studyLog,s,read);meta.put(v,'archive');
+      if(flushStudy(studyLog,s,read))meta.put(crypto.randomUUID(),revisionKey);
+      meta.put(v,'archive');
     });
   });
 }

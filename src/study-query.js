@@ -8,13 +8,7 @@ export function queryStudy(from,to,subject=''){
   return transaction(['studyLog'],'readonly',({studyLog},read,done)=>{
     const index=studyLog.index(subject?'subjectDay':'day');
     const range=subject?IDBKeyRange.bound([subject,from],[subject,to]):IDBKeyRange.bound(from,to);
-    read(index.getAll(range),rows=>{
-      rows.sort(chronological);
-      for(const row of rows)if(row.kind==='solved'){
-        read(studyLog.index('mistakeSession').count(row.session),count=>{row.wrongInSession=count});
-      }
-      done(rows);
-    });
+    read(index.getAll(range),rows=>done(rows.sort(chronological)));
   });
 }
 export function correctStudy(row,date){

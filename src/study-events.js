@@ -18,7 +18,7 @@ export function periodRange(preset,now=new Date()){
   const delta={'오늘':0,'최근 7일':6,'최근 30일':29,'이번 주':(new Date(end+'T12:00:00Z').getUTCDay()+6)%7}[preset];
   return [shift(end,-(delta??0)),end];
 }
-export function occurrenceId(e){return e.instance?'wrong:'+e.instance:'legacy:'+JSON.stringify([e.id,e.date])}
+export function occurrenceId(e){return e.instance?'wrong:'+e.instance:'legacy:'+JSON.stringify([e.id,e.registrationDate||e.date])}
 function queue(archive,op){if(!pending.has(archive))pending.set(archive,[]);pending.get(archive).push(op)}
 export function recordAdded(s,event){queue(s,{event})}
 export function recordWithdrawn(s,event){queue(s,{withdraw:occurrenceId(event)})}
@@ -54,22 +54,57 @@ export function snapshots(s,ops=null){
   return {
     wrong(e,legacy=false){
       const row=base('wrong',occurrenceId(e),e.date,e.session,legacy),q=questions.get(e.q);
-      if(!row||!q)return;
+      if(!q)return;
+      if(!row){
+        // Retain the fact that the attempt had a wrong answer. With no day
+        // this compact record deliberately has no entry in either date index.
+        if(legacy)return {id:occurrenceId(e),kind:'undated',doc:q.doc,q:q.id,number:q.number,session:e.session};
+        return;
+      }
       const theme=id=>({id,label:labels.get(id)||id});
-      return {...row,q:q.id,number:q.number,eventId:e.id,mistakeSession:e.session,primary:q.theme?theme(q.theme):null,
+      return {...row,q:q.id,number:q.number,primary:q.theme?theme(q.theme):null,
         secondary:(q.secondary||[]).filter(Boolean).map(theme),status:q.status||'',count:0};
     },
     solved(a,legacy=false){return base('solved','solved:'+a.id,a.solvedAt,a.id,legacy)}
   };
 }
-export function legacyRows(s){
-  const rows=new Map(),context=snapshots(s),counts=new Map();
-  function add(e){const r=context.wrong(e,true);if(r)rows.set(r.id,r)}
+export const chronological=(a,b)=>a.day.localeCompare(b.day)||a.time.localeCompare(b.time)||a.sessionNumber-b.sessionNumber||a.id.localeCompare(b.id);
+export function rankOccurrences(rows){
+  const undated=new Map(),counts=new Map(),changed=[];
+  for(const r of rows)if(r.kind==='undated')undated.set(r.q,(undated.get(r.q)||0)+1);
+  for(const r of rows.filter(r=>r.kind==='wrong').sort(chronological)){
+    const count=(counts.get(r.q)||0)+1,unknown=undated.get(r.q)||0;
+    counts.set(r.q,count);
+    if(r.count===count&&(r.undatedCount||0)===unknown)continue;
+    r.count=count;if(unknown)r.undatedCount=unknown;else delete r.undatedCount;
+    changed.push(r);
+  }
+  return changed;
+}
+export function summarizeAttempts(rows){
+  rankOccurrences(rows);
+  const counts=new Map();
+  for(const r of rows)if(r.kind==='wrong'||r.kind==='undated')counts.set(r.session,(counts.get(r.session)||0)+1);
+  for(const r of rows)if(r.kind==='solved')r.wrongInSession=counts.get(r.session)||0;
+}
+export function legacyRows(s,knownIds=new Set()){
+  const rows=new Map();let context;
+  function add(e){
+    const id=occurrenceId(e);
+    if(knownIds.has(id)||rows.has(id))return;
+    context??=snapshots(s);const r=context.wrong(e,true);
+    if(r)rows.set(id,r);
+  }
   for(const e of s.events)add(e);
   for(const b of s.removedMistakes||[])for(const e of b.events)add(e);
-  const result=[...rows.values()].sort(chronological);
-  for(const row of result){row.count=(counts.get(row.q)||0)+1;counts.set(row.q,row.count)}
-  for(const a of s.sessions){const row=context.solved(a,true);if(row)result.push(row)}
-  return result;
+  const purgedSessions=new Set();
+  for(const key of s.purgedAttempts||[]){
+    try{const [eventId]=JSON.parse(key);purgedSessions.add(eventId.slice(0,eventId.lastIndexOf('#')))}catch{/* older opaque keys have no session */}
+  }
+  for(const a of s.sessions){
+    if(!a.solvedAt||knownIds.has('solved:'+a.id))continue;
+    context??=snapshots(s);const r=context.solved(a,true);
+    if(r){if(purgedSessions.has(a.id))r.priorCleanup=true;rows.set(r.id,r)}
+  }
+  const result=[...rows.values()];summarizeAttempts(result);return result;
 }
-export const chronological=(a,b)=>a.time.localeCompare(b.time)||a.id.localeCompare(b.id);

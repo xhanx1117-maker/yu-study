@@ -154,7 +154,7 @@ export function removeEvents(archive, expected) {
 // A session can be unmarked and marked again. Only the removed occurrence is
 // suppressed when an older archive is brought back to this device.
 export function attemptKey(event){
-  return JSON.stringify([event.id,event.q,event.instance||event.date||'']);
+  return JSON.stringify([event.id,event.q,event.instance||event.registrationDate||event.date||'']);
 }
 export function trashEntries(archive){
   return (archive.removedMistakes||[]).flatMap(batch=>batch.events.map(event=>({

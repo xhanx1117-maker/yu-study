@@ -2,7 +2,7 @@ import {$,esc,guard,modal,options} from './ui.js';
 import {subjects,themes} from './model.js';
 import {periodRange,validDay} from './study-events.js';
 import {queryStudy,correctStudy} from './study-query.js';
-import {studyReport,reportText,reportCsv} from './study-report.js';
+import {studyReport,reportText,reportCsv,occurrenceLabel} from './study-report.js';
 import {download} from './backup.js';
 
 const presets=['오늘','어제','최근 7일','최근 30일','이번 주','이번 달','직접 날짜 지정'];
@@ -25,7 +25,7 @@ export function openStudyLog(refresh,archive){
     if(!field('history').open)return;
     const items=rows.slice(offset,offset+24);
     field('list').innerHTML=items.map((r,i)=>'<div class="study-entry"><div><strong>'+esc(r.day+' · '+r.subject+' · '+(r.kind==='wrong'?r.number+'번':'풀이 완료'))+'</strong><small>'+
-      esc([r.title,validDay(r.time)?'시각 미기록':clock.format(new Date(r.time)),r.sessionNumber+'회차',r.kind==='wrong'?(r.count===1?'신규':'반복')+' · 누적 '+r.count+'회':''].filter(Boolean).join(' · '))+
+      esc([r.title,validDay(r.time)?'시각 미기록':clock.format(new Date(r.time)),r.sessionNumber+'회차',r.kind==='wrong'?occurrenceLabel(r):''].filter(Boolean).join(' · '))+
       '</small></div><button data-study-edit="'+(offset+i)+'">정정</button></div>').join('')||(report?'<p>이 기간에 저장된 기록이 없습니다.</p>':'');
     field('pages').innerHTML=rows.length>24?'<button data-turn="-1" '+(offset?'':'disabled')+'>이전</button><span>'+Math.floor(offset/24+1)+' / '+Math.ceil(rows.length/24)+'</span><button data-turn="1" '+(offset+24<rows.length?'':'disabled')+'>다음</button>':'';
   }
@@ -51,7 +51,7 @@ export function openStudyLog(refresh,archive){
       }
       report=studyReport(result,{from,to,subject});rows=result.slice().reverse();
       const s=report.summary;
-      field('summary').textContent=rows.length?'고유 오답 '+s.unique+'문항 · 신규 '+s.new+'회 · 반복 '+s.repeated+'회 · 풀이 완료 시험지 '+s.completedPapers+'개':'이 기간에 저장된 학습 기록이 없습니다.';
+      field('summary').textContent=rows.length?'고유 오답 '+s.unique+'문항 · 신규 '+s.new+'회 · 반복 '+s.repeated+'회'+(s.uncertain?' · 판정 보류 '+s.uncertain+'회':'')+' · 풀이 완료 시험지 '+s.completedPapers+'개':'이 기간에 저장된 학습 기록이 없습니다.';
       field('copy').disabled=field('export').disabled=!rows.length;showPreview();drawHistory();
     }catch(error){if(n===request){queryKey=null;field('summary').textContent='기록을 읽지 못했습니다. '+error.message}}
   }

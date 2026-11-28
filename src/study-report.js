@@ -4,20 +4,22 @@ export function examName(r){
   return [r.year,exam,grade&&!exam.includes(grade)?grade:'',r.rank,r.round,r.cohort&&(/기$/.test(r.cohort)?r.cohort:'제'+r.cohort+'기'),r.subject,r.form&&(/형$/.test(r.form)?r.form:r.form+'형')].filter(Boolean).join(' ')||r.title;
 }
 const keyTheme=t=>t.id;
+export const mistakeType=r=>r.count>1?'반복':r.undatedCount?'판정 보류':'신규';
+export const occurrenceLabel=r=>mistakeType(r)+' · 누적 '+(r.undatedCount?'최소 ':'')+r.count+'회';
 export function metrics(rows){
   const unique=new Set(),papers=new Set(),clean=new Set(),finished=new Set(),themes=new Map();
-  let total=0,fresh=0;
+  let total=0,fresh=0,uncertain=0;
   for(const r of rows){
     if(r.kind==='solved'){
-      finished.add(r.doc);if(r.wrongInSession===0)clean.add(r.doc);continue;
+      finished.add(r.doc);if(!r.priorCleanup&&r.wrongInSession===0)clean.add(r.doc);continue;
     }
-    total++;if(r.count===1)fresh++;
+    total++;if(r.count===1){if(r.undatedCount)uncertain++;else fresh++}
     unique.add(r.q);papers.add(r.doc);
     for(const t of new Map([r.primary||r.current?.primary||{id:'',label:'미분류'},...(r.primary||!r.current?r.secondary:r.current.secondary)].map(t=>[keyTheme(t),t])).values()){
       const item=themes.get(t.id)||{id:t.id,label:t.label,count:0};item.count++;themes.set(t.id,item);
     }
   }
-  return {unique:unique.size,occurrences:total,new:fresh,repeated:total-fresh,wrongPapers:papers.size,completedPapers:finished.size,
+  return {unique:unique.size,occurrences:total,new:fresh,repeated:total-fresh-uncertain,uncertain,wrongPapers:papers.size,completedPapers:finished.size,
     cleanCompletedPapers:clean.size,themes:[...themes.values()].sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label,'ko'))};
 }
 function grouped(rows,key){const index=new Map();for(const r of rows){const value=r[key];if(!index.has(value))index.set(value,[]);index.get(value).push(r)}return index}
@@ -29,7 +31,7 @@ export function studyReport(rows,{from,to,subject=''}){
   }));
   return {schemaVersion:1,reportId:['yu-study',1,from,to,subject||'전체'].join('/'),timeZone:'Asia/Seoul',from,to,subject:subject||'전체',summary:metrics(rows),days};
 }
-const countLine=m=>'고유 오답 '+m.unique+'문항 · 발생 '+m.occurrences+'회 · 신규 '+m.new+'회 · 반복 '+m.repeated+'회';
+const countLine=m=>'고유 오답 '+m.unique+'문항 · 발생 '+m.occurrences+'회 · 신규 '+m.new+'회 · 반복 '+m.repeated+'회'+(m.uncertain?' · 신규/반복 판정 보류 '+m.uncertain+'회':'');
 export function reportText(report,markdown=false,prompt=false){
   const title=(n,s)=>markdown?'#'.repeat(n)+' '+s:s;
   const lines=[title(1,'Yu: study 일일 학습 기록'),'','학습 기간 '+report.from+(report.to===report.from?'':' ~ '+report.to)+' (한국 시간)'];
@@ -46,11 +48,11 @@ export function reportText(report,markdown=false,prompt=false){
         for(const [num,events] of [...questions].sort(([a],[b])=>a-b)){
           for(const e of events){
             hasLegacy||=e.legacy;
-            lines.push('- '+num+'번 · '+e.sessionNumber+'회차 · '+(e.count===1?'신규':'반복')+' · 누적 '+e.count+'회 · 주 테마 '+(e.primary?.label||'미분류')+
+            lines.push('- '+num+'번 · '+e.sessionNumber+'회차 · '+occurrenceLabel(e)+' · 주 테마 '+(e.primary?.label||'미분류')+
               (e.secondary.length?' · 보조 '+e.secondary.map(t=>t.label).join(', '):'')+(e.status?' · '+e.status:'')+(e.current?.primary&&e.current.primary.id!==e.primary?.id?' · 현재 주 테마 '+e.current.primary.label:'')+(e.current?.status&&e.current.status!==e.status?' · 현재 '+e.current.status:''));
           }
         }
-        for(const e of list.filter(e=>e.kind==='solved'))lines.push('- '+e.sessionNumber+'회차 풀이 완료'+(e.wrongInSession===0?' · 기록된 오답 없음':''));
+        for(const e of list.filter(e=>e.kind==='solved'))lines.push('- '+e.sessionNumber+'회차 풀이 완료'+(e.wrongInSession===0?(e.priorCleanup?' · 이전 정리로 오답 여부 미상':' · 기록된 오답 없음'):''));
       }
       lines.push('',subject.name+' 소계 · '+countLine(subject.summary));
     }
@@ -68,9 +70,9 @@ function csvCell(value){
   return '"'+s.replace(/"/g,'""')+'"';
 }
 export function reportCsv(report){
-  const lines=[['기록 ID','한국 날짜','발생 시각(UTC)','유형','과목','시험지 ID','시험지명','시험 연도','시험','급수','계급','회차','기수','책형','문항 ID','원문 번호','학습 회차','풀이 ID','신규/반복','발생 당시 누적','주 테마','보조 테마','숙지 상태','완료 회차 오답 수','현재 주 테마','현재 보조 테마','현재 숙지 상태']];
+  const lines=[['기록 ID','한국 날짜','발생 시각(UTC)','유형','과목','시험지 ID','시험지명','시험 연도','시험','급수','계급','회차','기수','책형','문항 ID','원문 번호','학습 회차','풀이 ID','신규/반복','발생 당시 누적','주 테마','보조 테마','숙지 상태','완료 회차 오답 수','현재 주 테마','현재 보조 테마','현재 숙지 상태','날짜 미상 동일 문항 이력 수','이전 정리로 완료 회차 불확실']];
   for(const d of report.days)for(const s of d.subjects)for(const exam of s.exams)for(const e of exam.entries)lines.push([
     e.id,e.day,e.time,e.kind==='solved'?'풀이 완료':'오답',e.subject,e.doc,e.title,e.year,e.exam,e.grade,e.rank,e.round,e.cohort,e.form,e.q,e.number,e.sessionNumber,e.session,
-    e.kind==='wrong'?(e.count===1?'신규':'반복'):'',e.count,e.kind==='wrong'?(e.primary?.label||'미분류'):'',e.secondary?.map(t=>t.label).join(' / '),e.status,e.wrongInSession,e.current?.primary?.label,e.current?.secondary.map(t=>t.label).join(' / '),e.current?.status]);
+    e.kind==='wrong'?mistakeType(e):'',e.count,e.kind==='wrong'?(e.primary?.label||'미분류'):'',e.secondary?.map(t=>t.label).join(' / '),e.status,e.wrongInSession,e.current?.primary?.label,e.current?.secondary.map(t=>t.label).join(' / '),e.current?.status,e.undatedCount,e.priorCleanup?'예':'']);
   return '\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n');
 }
